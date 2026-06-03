@@ -2,6 +2,32 @@ import random
 
 from .abstract import AbstractTokenizer, AbstractTask
 
+_OPEN = "([{"
+_CLOSE = ")]}"
+_BRACKETS = _OPEN + _CLOSE
+
+
+class DyckTokenizer(AbstractTokenizer):
+
+    def __init__(self):
+        super().__init__(vocab=list(_BRACKETS))
+
+    def tokenize(self, prompt: str) -> list[int]:
+        try:
+            return [self.token_to_idx[token] for token in prompt]
+        except KeyError as exc:
+            raise ValueError(f"Unknown token {exc.args[0]!r} in prompt {prompt!r}") from exc
+
+    def decode(self, tokens: list[int]) -> str:
+        chars = []
+        for token_id in tokens:
+            if token_id == self.PAD_ID:
+                continue
+            if self.eos is not None and token_id == self.eos:
+                break
+            chars.append(self.idx_to_token[token_id])
+        return "".join(chars)
+
 
 class Dyck(AbstractTask):
     """Complete a partial bracket string with valid closings.
@@ -9,11 +35,13 @@ class Dyck(AbstractTask):
     Bracket types: ``( )``, ``[ ]``, ``{ }``.
     """
 
-    OPEN = "([{"
-    CLOSE = ")]}"
+    OPEN = _OPEN
+    CLOSE = _CLOSE
     OPEN_TO_CLOSE = {"(": ")", "[": "]", "{": "}"}
     CLOSE_TO_OPEN = {")": "(", "]": "[", "}": "{"}
-    BRACKETS = OPEN + CLOSE
+    BRACKETS = _BRACKETS
+
+    tokenizer = DyckTokenizer()
 
     def __init__(
         self,
@@ -96,30 +124,3 @@ class Dyck(AbstractTask):
                 stack.append(open_bracket)
                 chars.append(open_bracket)
         return "".join(chars), stack
-
-
-class DyckTokenizer(AbstractTokenizer):
-
-    def __init__(self):
-        super().__init__(vocab=list(Dyck.BRACKETS))
-    
-    def tokenize(self, prompt: str) -> list[int]:
-        """Encode a string into token ids."""
-        try:
-            return [self.token_to_idx[token] for token in prompt]
-        except KeyError as exc:
-            raise ValueError(f"Unknown token {exc.args[0]!r} in prompt {prompt!r}") from exc
-
-    def decode(self, tokens: list[int]) -> str:
-        """Decode token ids back to text, skipping padding and EOS."""
-        chars = []
-        for token_id in tokens:
-            if token_id == self.PAD_ID:
-                continue
-            if self.eos is not None and token_id == self.eos:
-                break
-            chars.append(self.idx_to_token[token_id])
-        return "".join(chars)
-
-
-Dyck.tokenizer = DyckTokenizer()

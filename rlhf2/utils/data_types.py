@@ -42,7 +42,6 @@ class RLConfig(BaseModel):
 
 class ModelConfig(BaseModel):
     num_layers: int = Field(description="Number of transformer layers")
-    vocab_size: int = Field(description="Vocabulary size")
     dim: int = Field(description="Model hidden dimension")
     num_head: int = Field(description="Number of attention heads")
     head_dim: int = Field(description="Dimension per attention head")
@@ -57,9 +56,8 @@ class DataConfig(BaseModel):
     val_size: int = Field(description="Number of validation prompts")
     seed: int = Field(description="Random seed for data sampling")
     batch_size: int = 8
-    max_sample_attempts: int | None = Field(
-        default=None,
-        description="Max get_task calls when collecting unique prompts; default scales with dataset size",
+    max_sample_attempts: int = Field(
+        description="Max get_task calls when collecting unique prompts",
     )
     oversample: bool = Field(
         default=False,

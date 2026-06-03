@@ -21,6 +21,11 @@ class AbstractTokenizer:
         self.idx_to_token = {idx + 1: token for idx, token in enumerate(vocab)}
         self.eos = self.token_to_idx[eos] if eos is not None else None
 
+    @property
+    def vocab_size(self) -> int:
+        """Embedding vocabulary size (pad id 0 plus token ids 1..len(vocab))."""
+        return len(self.token_to_idx) + 1
+
     def tokenize(self, prompt: str) -> list[int]:
         """Encode a string into token ids."""
         raise NotImplementedError()
@@ -78,6 +83,12 @@ class AbstractTokenizer:
 
 class AbstractTask:
     tokenizer: AbstractTokenizer | None = None
+
+    @classmethod
+    def get_tokenizer(cls) -> AbstractTokenizer:
+        if cls.tokenizer is None:
+            raise ValueError(f"Task {cls.__name__} does not define a tokenizer")
+        return cls.tokenizer
 
     def get_task(self):
         """Return a task dict with at least a ``prompt`` field."""

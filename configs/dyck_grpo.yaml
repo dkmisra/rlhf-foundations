@@ -19,7 +19,6 @@ rl_config:
 
 model_config:
   num_layers: 2
-  vocab_size: 7
   dim: 64
   num_head: 4
   head_dim: 16
@@ -33,5 +32,6 @@ data_config:
   val_size: 8
   seed: 0
   batch_size: 4
+  max_sample_attempts: 10000
   mean_prompt_length: 8
   max_completion_length: 16

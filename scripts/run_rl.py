@@ -32,10 +32,7 @@ ALGORITHMS = {
 
 
 def get_task_tokenizer(task: AbstractTask) -> AbstractTokenizer:
-    tokenizer = type(task).tokenizer
-    if tokenizer is None:
-        raise ValueError(f"Task {type(task).__name__} does not define a tokenizer")
-    return tokenizer
+    return type(task).get_tokenizer()
 
 
 class BatchDict(dict):
@@ -59,10 +56,6 @@ class TaskDataset(Dataset):
 def collate_task_batch(batch: list[tuple[str, dict]]) -> BatchDict:
     prompts, metadata = zip(*batch)
     return BatchDict({"prompt": list(prompts), "metadata": list(metadata)})
-
-
-def default_max_sample_attempts(train_size: int, val_size: int) -> int:
-    return max(10_000, 100 * (train_size + val_size))
 
 
 def collect_unique_prompts(
@@ -104,9 +97,6 @@ def build_train_val_splits(
 ) -> tuple[list[dict], list[dict]]:
     """Sample unique prompts, then split into train and validation sets."""
     total = data_config.train_size + data_config.val_size
-    max_attempts = data_config.max_sample_attempts
-    if max_attempts is None:
-        max_attempts = default_max_sample_attempts(data_config.train_size, data_config.val_size)
 
     rng = random.Random(data_config.seed)
     saved_rng = task.rng
@@ -116,7 +106,7 @@ def build_train_val_splits(
         task,
         num_unique=total,
         rng=rng,
-        max_attempts=max_attempts,
+        max_attempts=data_config.max_sample_attempts,
         oversample=data_config.oversample,
     )
     task.rng = saved_rng
@@ -163,10 +153,10 @@ def build_task(data_config):
     raise ValueError(f"Unknown domain: {data_config.domain!r}")
 
 
-def build_model(model_config, device: str) -> Transformer:
+def build_model(model_config, tokenizer: AbstractTokenizer, device: str) -> Transformer:
     model = Transformer(
         num_layers=model_config.num_layers,
-        vocab_size=model_config.vocab_size,
+        vocab_size=tokenizer.vocab_size,
         dim=model_config.dim,
         num_head=model_config.num_head,
         head_dim=model_config.head_dim,
@@ -209,15 +199,14 @@ def run_experiment(config: Config) -> None:
         seed=config.data_config.seed + 1,
     )
 
-    model = build_model(config.model_config, device)
+    tokenizer = get_task_tokenizer(task)
+    model = build_model(config.model_config, tokenizer, device)
     model_ref = copy.deepcopy(model)
     for param in model_ref.parameters():
         param.requires_grad = False
-
-    tokenizer = get_task_tokenizer(task)
     trainer = build_trainer(config.rl_config)
 
-    print(f"Launching {config.rl_config.algorithm} on {config.data_config.domain}")
+    print(f"Launching {config.rl_config.algorithm} on {config.data_config.domain} (vocab_size={tokenizer.vocab_size})")
     print(
         f"Unique prompts: train={len(train_items)}, val={len(val_items)} "
         f"(target {config.data_config.train_size}/{config.data_config.val_size})"
