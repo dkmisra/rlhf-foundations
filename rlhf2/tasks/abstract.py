@@ -10,16 +10,18 @@ class AbstractTokenizer:
 
     PAD_ID = 0
 
-    def __init__(self, vocab: list[str], eos: str | None = None):
-        
+    def __init__(self, vocab: list[str], eos: str):
         if not vocab:
             raise ValueError("vocab must be non-empty")
         if len(set(vocab)) != len(vocab):
             raise ValueError("vocab tokens must be unique")
+        if eos not in vocab:
+            raise ValueError(f"eos token {eos!r} must be included in vocab")
 
         self.token_to_idx = {token: idx + 1 for idx, token in enumerate(vocab)}
         self.idx_to_token = {idx + 1: token for idx, token in enumerate(vocab)}
-        self.eos = self.token_to_idx[eos] if eos is not None else None
+        self.eos_token = eos
+        self.eos = self.token_to_idx[eos]
 
     @property
     def vocab_size(self) -> int:

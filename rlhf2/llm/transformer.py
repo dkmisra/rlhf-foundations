@@ -4,50 +4,9 @@ import torch.nn as nn
 
 from llm.rope import Rope
 from llm.sinpos_absolute import SinPosAbsoluteEmbedding
-
-
-class SwishGLUMLP(nn.Module):
-    """
-        Swish-GLU MLP implementation. See https://arxiv.org/pdf/2002.05202 for more details.
-    """
-
-    def __init__(self, dim, expansion_factor=4, beta=1):
-        super().__init__()
-        self.beta = beta
-        self.norm = nn.LayerNorm(dim)
-        self.W_up = nn.Linear(dim, expansion_factor * dim, bias=False)
-        self.W_gate = nn.Linear(dim, expansion_factor * dim, bias=False)
-        self.W_down = nn.Linear(expansion_factor * dim, dim)
-    
-    def forward(self, x):
-        
-        y = self.norm(x)
-        up = self.W_up(y)
-        gate_in = self.W_gate(y)
-        if self.beta == 1:
-            gate = torch.silu(gate_in)
-        else:
-            gate = gate_in * torch.sigmoid(self.beta * gate_in)
-        return self.W_down(up * gate) + x
-
-
-class MLP(nn.Module):
-    """
-        Basic MLP implementation.
-    """
-
-    def __init__(self, dim, expansion_factor=4):
-        super().__init__()
-
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim * expansion_factor),
-            nn.SiLU(),
-            nn.Linear(dim * expansion_factor, dim)
-        )
-    
-    def forward(self, x):
-        return x + self.net(x)
+from utils.data_types import LLMConfig
+from llm.moe import MixtureOfExpert
+from llm.experts import MLP, SwishGLUMLP
 
 
 class MultiHeadAttention(nn.Module):
@@ -125,41 +84,79 @@ class MultiHeadAttention(nn.Module):
 
 class TransformerBlock(nn.Module):
 
-    def __init__(self, dim, num_head, head_dim, causal=True):
+    def __init__(self, llm_config: LLMConfig):
         super().__init__()
 
-        self.attn = MultiHeadAttention(dim, num_head, head_dim, causal)
-        self.mlp = MLP(dim)
-    
+        dim = llm_config.dim
+        self.attn = MultiHeadAttention(dim, llm_config.num_head, llm_config.head_dim, llm_config.causal)
+        self._moe_load_balancing_coef = 0.0
+        self._ffn_is_moe = False
+
+        if llm_config.ffn_type == "mlp":
+            self.ffn = MLP(dim)
+        elif llm_config.ffn_type == "moe":
+            from llm.moe import MixtureOfExpert
+
+            moe_config = llm_config.moe
+            if moe_config is None:
+                raise ValueError("llm_config.moe is required when ffn_type is 'moe'")
+            self.ffn = MixtureOfExpert(
+                moe_config.num_experts, dim, top_k=moe_config.top_k
+            )
+            self._ffn_is_moe = True
+            self._moe_load_balancing_coef = moe_config.load_balancing_coef
+        else:
+            raise ValueError(f"Invalid ffn_type: {llm_config.ffn_type!r}")
+
     def forward(self, x, attention_mask, kv_cache=None, rope=None):
+        
         x, new_kv_cache = self.attn(x, attention_mask, kv_cache, rope)
-        x = self.mlp(x)
+        use_moe_loss = (
+            self._ffn_is_moe
+            and self._moe_load_balancing_coef > 0
+            and self.training
+        )
+        if use_moe_loss:
+            x, moe_loss = self.ffn(x, return_loss=True)
+            self._last_moe_loss = moe_loss
+        else:
+            x = self.ffn(x)
+            self._last_moe_loss = None
         return x, new_kv_cache
 
 
 class Transformer(nn.Module):
 
-    def __init__(self, num_layers, vocab_size, dim, num_head, head_dim, max_seq, causal=True, pos_embed_type="rope"):
+    def __init__(self, llm_config: LLMConfig, vocab_size: int):
         super().__init__()
 
-        self.num_layers = num_layers
-        self.embed = nn.Embedding(vocab_size, dim)
+        self.llm_config = llm_config
+        self.num_layers = llm_config.num_layers
+        self._moe_load_balancing_coef = (
+            llm_config.moe.load_balancing_coef
+            if llm_config.moe is not None
+            else 0.0
+        )
+        self.embed = nn.Embedding(vocab_size, llm_config.dim)
 
-        if pos_embed_type == "rope":
-            self.rope = Rope(head_dim=head_dim)
+        if llm_config.pos_embed_type == "rope":
+            self.rope = Rope(head_dim=llm_config.head_dim)
             self.pos_embedding = None
-        elif pos_embed_type == "absolute":
-            self.pos_embedding = SinPosAbsoluteEmbedding(max_seq, dim)
+        elif llm_config.pos_embed_type == "absolute":
+            self.pos_embedding = SinPosAbsoluteEmbedding(
+                llm_config.max_seq, llm_config.dim
+            )
             self.rope = None
         else:
-            raise ValueError(f"Invalid position embedding type: {pos_embed_type}")
+            raise ValueError(
+                f"Invalid position embedding type: {llm_config.pos_embed_type}"
+            )
 
-        self.layers = nn.ModuleList([
-                TransformerBlock(dim, num_head, head_dim, causal) for _ in range(num_layers)
-                ])
-        
-        # Final projection layer to get logits
-        self.W_proj = nn.Linear(dim, vocab_size)
+        self.layers = nn.ModuleList(
+            [TransformerBlock(llm_config) for _ in range(llm_config.num_layers)]
+        )
+
+        self.W_proj = nn.Linear(llm_config.dim, vocab_size)
     
     def forward(self, input_ids, attention_mask, kv_caches=None):
         """
@@ -185,10 +182,25 @@ class Transformer(nn.Module):
             x += pos_embed
 
         new_kv_caches = []
+        moe_aux_loss: torch.Tensor | float = 0.0
         for i, layer in enumerate(self.layers):
-            x, new_kv_cache = layer(x, attention_mask, None if kv_caches is None else kv_caches[i], rope=self.rope)
+            x, new_kv_cache = layer(
+                x,
+                attention_mask,
+                None if kv_caches is None else kv_caches[i],
+                rope=self.rope,
+            )
             new_kv_caches.append(new_kv_cache)
-        
+            last_moe_loss = getattr(layer, "_last_moe_loss", None)
+            if last_moe_loss is not None:
+                moe_aux_loss = moe_aux_loss + last_moe_loss
+
+        coef = self._moe_load_balancing_coef
+        if isinstance(moe_aux_loss, torch.Tensor) and coef > 0:
+            self.moe_aux_loss = moe_aux_loss * coef
+        else:
+            self.moe_aux_loss = torch.zeros((), device=x.device)
+
         logits = self.W_proj(x)
-        
+
         return logits, new_kv_caches

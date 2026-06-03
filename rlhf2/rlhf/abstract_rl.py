@@ -1,7 +1,12 @@
+import copy
+
 import torch 
 import torch.optim as opt
 
+from rlhf.evaluate import evaluate_reward
+from rlhf.sft import SFTTrainer
 from utils.data_types import RLConfig
+from utils.visualize import grad_norm
 
 
 class AbstractRLHF:
@@ -112,9 +117,7 @@ class AbstractRLHF:
             probs = torch.softmax(logits[:, -1, :] / max(temp, 1e-6), dim=-1)
             next_tokens = torch.multinomial(probs, num_samples=1).squeeze(-1)
 
-            if eos_id is not None:
-                done = done | (next_tokens == eos_id)
-            done = done | (next_tokens == pad_id)
+            done = done | (next_tokens == eos_id) | (next_tokens == pad_id)
             next_tokens = torch.where(done, torch.full_like(next_tokens, pad_id), next_tokens)
 
             input_ids = torch.cat([input_ids, next_tokens.unsqueeze(1)], dim=1)
@@ -124,14 +127,26 @@ class AbstractRLHF:
         for i in range(batch_size):
             gen_ids: list[int] = []
             for token_id in input_ids[i, prompt_lens[i] :].tolist():
-                if token_id == pad_id or (eos_id is not None and token_id == eos_id):
+                if token_id == pad_id:
+                    break
+                if token_id == eos_id:
                     break
                 gen_ids.append(token_id)
             completions.append(tokenizer.decode(gen_ids))
 
         return [completions[i * K : (i + 1) * K] for i in range(len(prompts))]
 
-    def collect_data(self, data, model, tokenizer, reward_fn, K=None):
+    def collect_data(
+        self,
+        data,
+        model,
+        tokenizer,
+        reward_fn,
+        K=None,
+        visualizer=None,
+        log_step: int | None = None,
+        log_phase: str = "rl",
+    ):
 
         K = self.config.K if K is None else K
         prompts = data["prompt"]
@@ -148,30 +163,55 @@ class AbstractRLHF:
                 ({"prompt": prompt, "metadata": metadata}, generations, rewards)
             )
 
+        if visualizer is not None and log_step is not None:
+            visualizer.log_rollout_batch(
+                step=log_step,
+                phase=log_phase,
+                prompts=prompts,
+                metadata_list=metadata_list,
+                generations_per_prompt=all_generations,
+                rewards_per_prompt=[item[2] for item in batch_with_gens_and_rewards],
+            )
+
         mean_reward = sum_reward / float(len(prompts) * K)
         return batch_with_gens_and_rewards, mean_reward
     
-    def evaluate(self, eval_loader, model, tokenizer, reward_fn):
+    def evaluate(self, eval_loader, model, tokenizer, reward_fn, visualizer=None, step: int | None = None):
+        evaluate_reward(
+            self,
+            eval_loader,
+            model,
+            tokenizer,
+            reward_fn,
+            visualizer=visualizer,
+            phase="rl",
+            step=step,
+        )
 
-        sum_rewards = 0.0
-        num_samples = 0
-        for data in eval_loader:
-            _, mean_reward = self.collect_data(data, model, tokenizer, reward_fn, K=1)
-            sum_rewards += mean_reward * len(data["prompt"])
-            num_samples += len(data["prompt"])
-        
-        mean_reward = sum_rewards / float(num_samples)
-        print(f"Evaluation: Mean reward is {mean_reward}")
-    
-    def train(self, model, model_ref, train_loader, eval_loader, tokenizer, reward_fn):
+    @staticmethod
+    def _clone_reference_model(model):
+        model_ref = copy.deepcopy(model)
+        for param in model_ref.parameters():
+            param.requires_grad = False
+        return model_ref
+
+    def train(self, model, train_loader, eval_loader, tokenizer, reward_fn, visualizer=None):
         """
         :param model: transformer model
-        :param model_ref: reference model
         :param train_loader: train loader. Each datapoint contains of a prompt and some metadata
         :param eval_loader: eval loader. Each datapoint contains of a prompt and some metadata
         :param tokenizer: tokenizer object
         :param reward_fn: a reward function that takes prompt, metadata, and completion and returns a reward score.
         """
+
+        if self.config.sft.enabled:
+            print("Starting SFT stage...")
+            SFTTrainer(self.config.sft).train(
+                model, train_loader, eval_loader, tokenizer, reward_fn, self, visualizer
+            )
+            print("SFT stage complete. Starting RL...")
+
+        model_ref = self._clone_reference_model(model) if self.config.kl > 0.0 else None
 
         optimizer = opt.AdamW(model.parameters(), lr=self.config.lr, weight_decay=self.config.weight_decay)
         it = 1
@@ -185,7 +225,9 @@ class AbstractRLHF:
                 # Data has two keys prompt and metadata each with list of entries
 
                 # Step 1: Generate responses
-                batch_with_gens_and_rewards, mean_reward = self.collect_data(data, model, tokenizer, reward_fn)
+                batch_with_gens_and_rewards, mean_reward = self.collect_data(
+                    data, model, tokenizer, reward_fn, visualizer=visualizer, log_step=it, log_phase="rl"
+                )
                 
                 # Step 2: Prepare the data for training
                 input_ids, attention_mask, response_mask, advantages = self.prepare_data(batch_with_gens_and_rewards, tokenizer)
@@ -213,16 +255,27 @@ class AbstractRLHF:
                     else:
                         kl_loss = 0.0
                     
-                    loss = grpo_loss + self.config.kl * kl_loss
+                    loss = grpo_loss + self.config.kl * kl_loss + getattr(model, "moe_aux_loss", 0.0)
 
                     optimizer.zero_grad()
                     loss.backward()
+                    gn = grad_norm(model)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), self.config.grad_clip)
                     optimizer.step()
+
+                    if visualizer is not None:
+                        visualizer.log_rl_step(
+                            step=it,
+                            total_loss=float(loss.item()),
+                            grpo_loss=float(grpo_loss.item()),
+                            kl_loss=float(kl_loss if isinstance(kl_loss, float) else kl_loss.item()),
+                            mean_reward=float(mean_reward),
+                            grad_norm_value=gn,
+                        )
                     
                     print(f"Iteration {it}: Loss={loss:.4f}: GRPO loss={grpo_loss:.4f}, KL loss={kl_loss:.4f}, Mean rewards {mean_reward:.2f}.")
                     it += 1
 
                     if it % 20 == 0:
-                        self.evaluate(eval_loader, model, tokenizer, reward_fn)
+                        self.evaluate(eval_loader, model, tokenizer, reward_fn, visualizer=visualizer, step=it)
 

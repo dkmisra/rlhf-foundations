@@ -1,5 +1,4 @@
 import argparse
-import copy
 import random
 import sys
 from pathlib import Path
@@ -20,6 +19,7 @@ from rlhf.tis import TIS
 from tasks.abstract import AbstractTask, AbstractTokenizer
 from tasks.dyck import Dyck
 from utils.data_types import Config, DataConfig
+from utils.visualize import create_visualizer
 
 
 ALGORITHMS = {
@@ -153,17 +153,8 @@ def build_task(data_config):
     raise ValueError(f"Unknown domain: {data_config.domain!r}")
 
 
-def build_model(model_config, tokenizer: AbstractTokenizer, device: str) -> Transformer:
-    model = Transformer(
-        num_layers=model_config.num_layers,
-        vocab_size=tokenizer.vocab_size,
-        dim=model_config.dim,
-        num_head=model_config.num_head,
-        head_dim=model_config.head_dim,
-        max_seq=model_config.max_seq,
-        causal=model_config.causal,
-        pos_embed_type=model_config.pos_embed_type,
-    )
+def build_model(llm_config, tokenizer: AbstractTokenizer, device: str) -> Transformer:
+    model = Transformer(llm_config, tokenizer.vocab_size)
     return model.to(device)
 
 
@@ -201,17 +192,17 @@ def run_experiment(config: Config) -> None:
 
     tokenizer = get_task_tokenizer(task)
     model = build_model(config.llm_config, tokenizer, device)
-    model_ref = copy.deepcopy(model)
-    for param in model_ref.parameters():
-        param.requires_grad = False
     trainer = build_trainer(config.rl_config)
+    visualizer = create_visualizer(config.visualize)
 
     print(f"Launching {config.rl_config.algorithm} on {config.data_config.domain} (vocab_size={tokenizer.vocab_size})")
+    if visualizer is not None:
+        print(f"Dashboard: http://{config.visualize.host}:{config.visualize.port}")
     print(
         f"Unique prompts: train={len(train_items)}, val={len(val_items)} "
         f"(target {config.data_config.train_size}/{config.data_config.val_size})"
     )
-    trainer.train(model, model_ref, train_loader, eval_loader, tokenizer, reward_fn)
+    trainer.train(model, train_loader, eval_loader, tokenizer, reward_fn, visualizer)
 
 
 def parse_args():

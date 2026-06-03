@@ -5,12 +5,13 @@ from .abstract import AbstractTokenizer, AbstractTask
 _OPEN = "([{"
 _CLOSE = ")]}"
 _BRACKETS = _OPEN + _CLOSE
+EOS_TOKEN = "."
 
 
 class DyckTokenizer(AbstractTokenizer):
 
     def __init__(self):
-        super().__init__(vocab=list(_BRACKETS))
+        super().__init__(vocab=list(_BRACKETS) + [EOS_TOKEN], eos=EOS_TOKEN)
 
     def tokenize(self, prompt: str) -> list[str]:
         tokens = list(prompt)
@@ -24,7 +25,7 @@ class DyckTokenizer(AbstractTokenizer):
         for token_id in tokens:
             if token_id == self.PAD_ID:
                 continue
-            if self.eos is not None and token_id == self.eos:
+            if token_id == self.eos:
                 break
             chars.append(self.idx_to_token[token_id])
         return "".join(chars)

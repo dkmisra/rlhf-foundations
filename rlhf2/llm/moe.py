@@ -1,23 +1,7 @@
-import torch 
-import torch.nn as nn 
+import torch
+import torch.nn as nn
 
-
-class MLP(nn.Module):
-
-    def __init__(self, dim):
-        super().__init__()
-
-        self.net = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, dim),
-            nn.ReLU(),
-            nn.Linear(dim, dim)
-        )
-    
-    def forward(self, x):
-        out = self.net(x)
-        x = x + out
-        return x
+from llm.experts import MLP
 
 
 class MixtureOfExpert(nn.Module):
@@ -62,7 +46,6 @@ class MixtureOfExpert(nn.Module):
         # Accumulate all router_prob here
         router_prob = torch.zeros(len(self.experts)).to(x.device)     # num_experts
 
-
         for i, expert in enumerate(self.experts):
             # Find all tokens that are mapped to this expert
             expert_present = (top_k_expert_id == i).any(dim=1)  # (B * N)
@@ -106,17 +89,3 @@ class MixtureOfExpert(nn.Module):
             return out, load_balancing_loss
         else:
             return out
-
-
-def main():
-    dim = 32
-    moe = MixtureOfExpert(num_experts=10, dim=dim, top_k=4)
-
-    x = torch.randn(3, 10, dim)
-    out, loss = moe(x, return_loss=True)
-
-    print(f"Out is {out.shape} and load balancing loss is {loss:.2f}")
-
-
-if __name__ == "__main__":
-    main()    
