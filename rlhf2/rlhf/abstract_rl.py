@@ -85,13 +85,13 @@ class AbstractRLHF:
         return loss.mean()
 
     @torch.no_grad()
-    def generate(self, model, prompts: list[str], tokenizer, K: int = 1, temp=None, max_tokens=None) -> list[list[str]]:
+    def generate(self, model, prompts: list[str], tokenizer, K: int = 1) -> list[list[str]]:
         """Batched autoregressive sampling. Returns K completions per prompt."""
         if not prompts:
             return []
 
-        temp = self.config.inference.temp if temp is None else temp
-        max_tokens = self.config.inference.max_tokens if max_tokens is None else max_tokens
+        temp = self.config.inference.temp
+        max_tokens = self.config.inference.max_tokens
 
         device = next(model.parameters()).device
         pad_id = tokenizer.PAD_ID
