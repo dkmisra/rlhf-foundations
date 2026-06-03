@@ -2,7 +2,7 @@ import torch
 
 
 @torch.no_grad()
-def evaluate_reward(
+def evaluate(
     rollout_trainer,
     eval_loader,
     model,

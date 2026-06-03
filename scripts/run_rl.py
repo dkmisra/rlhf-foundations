@@ -1,5 +1,6 @@
 import argparse
 import random
+import re
 import sys
 from pathlib import Path
 
@@ -134,9 +135,56 @@ def build_dataloader(
     )
 
 
+def resolve_config_path(config_path: Path) -> Path:
+    """Resolve config relative to cwd, then repo root."""
+    if config_path.is_file():
+        return config_path.resolve()
+    root_candidate = ROOT / config_path
+    if root_candidate.is_file():
+        return root_candidate.resolve()
+    raise FileNotFoundError(
+        f"Config not found: {config_path} (also tried {root_candidate})"
+    )
+
+
+_OVERRIDE_BUNDLE_RE = re.compile(r"\s+(?=[A-Za-z_][\w.]*=)")
+
+
+def normalize_override_tokens(tokens: list[str]) -> list[str]:
+    """Accept key=value, --key=value, and space-joined override bundles."""
+    normalized: list[str] = []
+    for token in tokens:
+        token = token.strip()
+        if not token or token == "--":
+            continue
+        if token.startswith("--"):
+            token = token[2:]
+        if "=" not in token:
+            raise ValueError(
+                f"Invalid override {token!r}; expected dot.path=value "
+                "(e.g. rl_config.max_epochs=5 or --rl_config.max_epochs=5)"
+            )
+        parts = (
+            _OVERRIDE_BUNDLE_RE.split(token)
+            if _OVERRIDE_BUNDLE_RE.search(token)
+            else [token]
+        )
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            if "=" not in part:
+                raise ValueError(f"Invalid override {part!r}; expected dot.path=value")
+            normalized.append(part)
+    return normalized
+
+
 def load_config(config_path: Path, overrides: list[str]) -> Config:
+    config_path = resolve_config_path(config_path)
     yaml_cfg = OmegaConf.load(config_path)
+    overrides = normalize_override_tokens(overrides)
     if overrides:
+        print(f"Applying CLI overrides: {', '.join(overrides)}")
         yaml_cfg = OmegaConf.merge(yaml_cfg, OmegaConf.from_dotlist(overrides))
     return Config.model_validate(OmegaConf.to_container(yaml_cfg, resolve=True))
 
@@ -214,16 +262,38 @@ def parse_args():
         help="Path to YAML config file",
     )
     parser.add_argument(
+        "-o",
+        "--override",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Config override as dot.path=value (repeatable)",
+    )
+    parser.add_argument(
         "overrides",
         nargs="*",
-        help="Dot-path overrides merged into config, e.g. rl_config.lr=0.001 data_config.seed=1",
+        help="Additional dot.path=value overrides, e.g. rl_config.lr=0.001 data_config.seed=1",
     )
-    return parser.parse_args()
+    args, unknown = parser.parse_known_args()
+
+    extra_overrides: list[str] = []
+    for token in unknown:
+        if token == "--":
+            continue
+        if not token.startswith("-") and "=" in token:
+            extra_overrides.append(token)
+            continue
+        if token.startswith("--") and "=" in token:
+            extra_overrides.append(token)
+            continue
+        parser.error(f"unrecognized arguments: {token}")
+
+    return resolve_config_path(args.config), args.override + args.overrides + extra_overrides
 
 
 def main():
-    args = parse_args()
-    config = load_config(args.config, args.overrides)
+    config_path, overrides = parse_args()
+    config = load_config(config_path, overrides)
     run_experiment(config)
 
 

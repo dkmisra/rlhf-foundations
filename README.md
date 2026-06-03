@@ -94,4 +94,20 @@ Pydantic validates config; `model_config` was renamed to `llm_config` because `m
 
 ## Contributing
 
-Issues and pull requests are welcome.
+Issues and pull requests are welcome. Here are some future releases:
+
+1. More tasks that are simple enough to be trained in under 20min on a Macbook Pro
+2. Tasks that require some simplistic version of reasoning and using process reward models for solving these.
+3. Saving and resuming sessions.
+
+If you find this work useful, you can cite the following:
+
+```bibtex
+@misc{misra2026rlhffoundations,
+  author       = {Misra, Dipendra},
+  title        = {RLHF2: Run and Understand RLHF Concepts on Your Macbook},
+  year         = {2026},
+  howpublished = {\url{https://github.com/dkmisra/rlhf-foundations}},
+  note         = {Educational codebase for learning RLHF on a single machine}
+}
+```

@@ -1,7 +1,7 @@
 import torch
 import torch.optim as optim
 
-from rlhf.evaluate import evaluate_reward
+from rlhf.evaluate import evaluate
 from utils.data_types import SFTConfig
 from utils.visualize import grad_norm
 
@@ -45,19 +45,6 @@ class SFTTrainer:
         loss = -(log_prob * mask).sum(1) / mask.sum(1).clamp(min=1.0)
         return loss.mean()
 
-    def evaluate(self, model, eval_loader, tokenizer, reward_fn, rollout_trainer, visualizer=None, step: int | None = None):
-        evaluate_reward(
-            rollout_trainer,
-            eval_loader,
-            model,
-            tokenizer,
-            reward_fn,
-            label="SFT evaluation",
-            visualizer=visualizer,
-            phase="sft",
-            step=step,
-        )
-
     def train(self, model, train_loader, eval_loader, tokenizer, reward_fn, rollout_trainer, visualizer=None):
         optimizer = optim.AdamW(
             model.parameters(),
@@ -93,12 +80,14 @@ class SFTTrainer:
                 it += 1
 
                 if self.config.eval_every > 0 and it % self.config.eval_every == 0:
-                    self.evaluate(
-                        model,
+                    evaluate(
+                        rollout_trainer,
                         eval_loader,
+                        model,
                         tokenizer,
                         reward_fn,
-                        rollout_trainer,
+                        label="SFT evaluation",
                         visualizer=visualizer,
+                        phase="sft",
                         step=it,
                     )

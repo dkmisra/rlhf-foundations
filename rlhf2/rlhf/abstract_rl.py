@@ -3,7 +3,7 @@ import copy
 import torch 
 import torch.optim as opt
 
-from rlhf.evaluate import evaluate_reward
+from rlhf.evaluate import evaluate
 from rlhf.sft import SFTTrainer
 from utils.data_types import RLConfig
 from utils.visualize import grad_norm
@@ -92,6 +92,7 @@ class AbstractRLHF:
     @torch.no_grad()
     def generate(self, model, prompts: list[str], tokenizer, K: int = 1) -> list[list[str]]:
         """Batched autoregressive sampling. Returns K completions per prompt."""
+        
         if not prompts:
             return []
 
@@ -107,26 +108,43 @@ class AbstractRLHF:
         inputs = tokenizer(expanded_prompts, padding=True, return_tensor="pt")
         input_ids = inputs["input_ids"].to(device)
         attention_mask = inputs["attention_mask"].to(device)
-        prompt_lens = attention_mask.sum(dim=1).long()
-
         batch_size = input_ids.size(0)
-        done = torch.zeros(batch_size, dtype=torch.bool, device=device)
+                
+        # New tokens are appended after the padded prompt block; decode from here
+        # (not from per-row prompt_lens, which would land on right-pad slots).
+        gen_start = input_ids.size(1)
 
-        for _ in range(max_tokens):
-            logits, _ = model(input_ids, attention_mask)
-            probs = torch.softmax(logits[:, -1, :] / max(temp, 1e-6), dim=-1)
-            next_tokens = torch.multinomial(probs, num_samples=1).squeeze(-1)
+        kv_cache = None
 
-            done = done | (next_tokens == eos_id) | (next_tokens == pad_id)
-            next_tokens = torch.where(done, torch.full_like(next_tokens, pad_id), next_tokens)
+        out_tokens = []
 
-            input_ids = torch.cat([input_ids, next_tokens.unsqueeze(1)], dim=1)
-            attention_mask = torch.cat([attention_mask, (~done).float().unsqueeze(1)], dim=1)
+        for i in range(max_tokens):
+
+            logits, kv_cache = model(input_ids, attention_mask, kv_cache)
+
+            # We assume right-padding here, so need to do some work to extract last_logits
+            if i == 0:
+                prompt_len = attention_mask.sum(1) - 1                     # batch
+                prompt_len = prompt_len.long()
+                prompt_len = prompt_len.view(-1, 1, 1)                     # batch x 1 x 1
+                prompt_len = prompt_len.expand(-1, -1, logits.shape[2])                 # batch x 1 x vocab
+                last_logits = torch.gather(logits, index=prompt_len, dim=1).squeeze(1)  # batch x dim
+            else:
+                last_logits = logits[:, -1, :]                                          # batch x dim
+
+            probs = torch.softmax(last_logits / max(temp, 1e-6), dim=-1)
+            next_tokens = torch.multinomial(probs, num_samples=1)
+
+            input_ids = next_tokens                                                          # batch x 1
+            attention_mask = torch.cat([attention_mask, torch.ones_like(input_ids)], dim=1)  # batch x (kv_len + 1)
+            out_tokens.append(next_tokens)
+        
+        out_tokens = torch.cat(out_tokens, dim=1)           # batch x gen_len
 
         completions: list[str] = []
         for i in range(batch_size):
             gen_ids: list[int] = []
-            for token_id in input_ids[i, prompt_lens[i] :].tolist():
+            for token_id in out_tokens[i].tolist():
                 if token_id == pad_id:
                     break
                 if token_id == eos_id:
@@ -136,17 +154,8 @@ class AbstractRLHF:
 
         return [completions[i * K : (i + 1) * K] for i in range(len(prompts))]
 
-    def collect_data(
-        self,
-        data,
-        model,
-        tokenizer,
-        reward_fn,
-        K=None,
-        visualizer=None,
-        log_step: int | None = None,
-        log_phase: str = "rl",
-    ):
+    def collect_data(self, data, model, tokenizer, reward_fn, 
+                     K=None, visualizer=None, log_step: int | None = None, log_phase: str = "rl"):
 
         K = self.config.K if K is None else K
         prompts = data["prompt"]
@@ -175,18 +184,6 @@ class AbstractRLHF:
 
         mean_reward = sum_reward / float(len(prompts) * K)
         return batch_with_gens_and_rewards, mean_reward
-    
-    def evaluate(self, eval_loader, model, tokenizer, reward_fn, visualizer=None, step: int | None = None):
-        evaluate_reward(
-            self,
-            eval_loader,
-            model,
-            tokenizer,
-            reward_fn,
-            visualizer=visualizer,
-            phase="rl",
-            step=step,
-        )
 
     @staticmethod
     def _clone_reference_model(model):
@@ -214,6 +211,7 @@ class AbstractRLHF:
         model_ref = self._clone_reference_model(model) if self.config.kl > 0.0 else None
 
         optimizer = opt.AdamW(model.parameters(), lr=self.config.lr, weight_decay=self.config.weight_decay)
+        device = next(model.parameters()).device
         it = 1
 
         for epoch in range(self.config.max_epochs):
@@ -228,9 +226,16 @@ class AbstractRLHF:
                 batch_with_gens_and_rewards, mean_reward = self.collect_data(
                     data, model, tokenizer, reward_fn, visualizer=visualizer, log_step=it, log_phase="rl"
                 )
-                
+                model.train()
+
                 # Step 2: Prepare the data for training
-                input_ids, attention_mask, response_mask, advantages = self.prepare_data(batch_with_gens_and_rewards, tokenizer)
+                input_ids, attention_mask, response_mask, advantages = self.prepare_data(
+                    batch_with_gens_and_rewards, tokenizer
+                )
+                input_ids = input_ids.to(device)
+                attention_mask = attention_mask.to(device)
+                response_mask = response_mask.to(device)
+                advantages = advantages.to(device)
 
                 with torch.no_grad():
                     old_log_prob = self.calc_log_prob(model, input_ids, attention_mask)
@@ -277,5 +282,5 @@ class AbstractRLHF:
                     it += 1
 
                     if it % 20 == 0:
-                        self.evaluate(eval_loader, model, tokenizer, reward_fn, visualizer=visualizer, step=it)
+                        evaluate(self, eval_loader, model, tokenizer, reward_fn, visualizer=visualizer, phase="rl", step=it)
 
