@@ -10,10 +10,10 @@ class CISPO(GRPO):
         super().__init__(config)
 
     def calc_loss(self, log_prob, old_log_prob, response_mask, advantages):
-        """
+        r"""
             CISPO objective is:
 
-            J = 1/|batch| \sum_{batch} \sum_{i=1}^K \sum_{t=1}^|Y_i| clip(sgd(r_it), \rho) grad log p(y_it|x, y_{i, s<t}) A_i
+            J = 1/|batch| \sum_{batch} \sum_{i=1}^K \sum_{t=1}^|Y_i| clip(sgd(r_it), \rho) grad log p(y_it|x, y_{i, <t}) A_i
         """
 
         ratio = torch.exp(log_prob - old_log_prob)                      # (batch * K) x max_seq - 1

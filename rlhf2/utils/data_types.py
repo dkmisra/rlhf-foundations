@@ -73,6 +73,6 @@ class DataConfig(BaseModel):
 
 class Config(BaseModel):
     rl_config: RLConfig
-    model_config: ModelConfig
+    llm_config: ModelConfig
     data_config: DataConfig
     device: str = "cpu"

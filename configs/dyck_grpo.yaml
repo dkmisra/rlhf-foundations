@@ -17,7 +17,7 @@ rl_config:
     max_tokens: 16
     temp: 1.0
 
-model_config:
+llm_config:
   num_layers: 2
   dim: 64
   num_head: 4

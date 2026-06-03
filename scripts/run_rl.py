@@ -200,7 +200,7 @@ def run_experiment(config: Config) -> None:
     )
 
     tokenizer = get_task_tokenizer(task)
-    model = build_model(config.model_config, tokenizer, device)
+    model = build_model(config.llm_config, tokenizer, device)
     model_ref = copy.deepcopy(model)
     for param in model_ref.parameters():
         param.requires_grad = False

@@ -12,11 +12,12 @@ class DyckTokenizer(AbstractTokenizer):
     def __init__(self):
         super().__init__(vocab=list(_BRACKETS))
 
-    def tokenize(self, prompt: str) -> list[int]:
-        try:
-            return [self.token_to_idx[token] for token in prompt]
-        except KeyError as exc:
-            raise ValueError(f"Unknown token {exc.args[0]!r} in prompt {prompt!r}") from exc
+    def tokenize(self, prompt: str) -> list[str]:
+        tokens = list(prompt)
+        for token in tokens:
+            if token not in self.token_to_idx:
+                raise ValueError(f"Unknown token {token!r} in prompt {prompt!r}")
+        return tokens
 
     def decode(self, tokens: list[int]) -> str:
         chars = []

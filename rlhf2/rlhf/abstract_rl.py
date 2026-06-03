@@ -25,7 +25,7 @@ class AbstractRLHF:
         for item, generations, rewards in batch_with_gens_and_rewards:
             assert len(generations) == self.config.K
             for generation in generations:
-                prompt_len = len(tokenizer(item["prompt"]))
+                prompt_len = len(tokenizer.tokenize(item["prompt"]))
                 
                 prompt_lens.append(prompt_len)
                 content.append(item["prompt"] + generation)

@@ -26,8 +26,8 @@ class AbstractTokenizer:
         """Embedding vocabulary size (pad id 0 plus token ids 1..len(vocab))."""
         return len(self.token_to_idx) + 1
 
-    def tokenize(self, prompt: str) -> list[int]:
-        """Encode a string into token ids."""
+    def tokenize(self, prompt: str) -> list[str]:
+        """Split a string into a list of token strings."""
         raise NotImplementedError()
 
     def decode(self, tokens: list[int]) -> str:
@@ -41,13 +41,14 @@ class AbstractTokenizer:
         if not prompts:
             return [], []
 
-        batch_token_ids = [self.tokenize(prompt) for prompt in prompts]
-        max_len = max(len(ids) for ids in batch_token_ids)
+        batch_tokens = [self.tokenize(prompt) for prompt in prompts]
+        max_len = max(len(tokens) for tokens in batch_tokens)
 
         input_ids: list[list[int]] = []
         attention_mask: list[list[float]] = []
 
-        for token_ids in batch_token_ids:
+        for tokens in batch_tokens:
+            token_ids = [self.token_to_idx[token] for token in tokens]
             seq_len = len(token_ids)
             ids = list(token_ids)
             mask = [1.0] * seq_len
@@ -65,13 +66,10 @@ class AbstractTokenizer:
 
     def __call__(
         self,
-        texts: str | list[str],
+        texts: list[str],
         padding: bool = False,
         return_tensor: Literal["pt"] | None = None,
     ):
-        if isinstance(texts, str):
-            return len(self.tokenize(texts))
-
         input_ids, attention_mask = self.batch_encode(texts, padding=padding)
         if return_tensor == "pt":
             return {

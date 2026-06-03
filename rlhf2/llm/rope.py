@@ -10,10 +10,10 @@ class Rope(nn.Module):
         assert head_dim % 2 == 0
 
         # Create the theta vectors
-        self.thetas = torch.pow(base, - 2 * torch.arange(head_dim / 2) / head_dim)
+        thetas = torch.pow(base, - 2 * torch.arange(head_dim / 2) / head_dim)
 
         # Register buffers moves these tensors to same devices as the module.
-        self.register_buffer("thetas", self.thetas)
+        self.register_buffer("thetas", thetas)
 
     def forward(self, x, pos_ids=None):
         """

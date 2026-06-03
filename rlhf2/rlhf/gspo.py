@@ -10,11 +10,11 @@ class GSPO(GRPO):
         super().__init__(config)
 
     def calc_loss(self, log_prob, old_log_prob, response_mask, advantages):
-        """
+        r"""
             GSPO objective is:
 
-            J = 1/|batch| \sum_{batch} \sum_{i=1}^K min{r A_i, clip(r, 1-e_low, 1 + e_high)A} 
-            r = (p(Y_i|x)/p_old(Y_i|x))^{1/|Y_i|} 
+            J = 1/|batch| \sum_{batch} \sum_{i=1}^K min{r A_i, clip(r, 1-e_low, 1 + e_high)A}
+            r = (p(Y_i|x)/p_old(Y_i|x))^{1/|Y_i|}
               = exp(1/|Y_i| \sum_j log p(Y_ij|x, Y_{i,<j}) / p_old(Y_ij|x, Y_{i,<j}) )
         """
 
