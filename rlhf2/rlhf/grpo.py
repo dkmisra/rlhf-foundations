@@ -1,40 +1,14 @@
-import torch 
-import torch.optim as opt
+import torch
 
-from rl.abstract_rl import AbstractRLHF
-
-
-class GRPOConfig:
-
-    # optimization
-    max_epochs = 10
-    lr = 1e-3
-    weight_decay = 0.1
-    grad_clip = 1.0
-
-    # Core GRPO hyperparameters
-    K = 8       # Number of generations per K
-    eps_high = 0.28
-    eps_low = 0.2
-    kl = 0.0
-    num_updates = 1
-
-    # Dr. GRPO setting
-    adv_normalize = False 
-    length_normalize = False
-
-    # Generation setup
-    max_tokens = 40
-    temp = 1.0
-    top_p = 1.0
+from rlhf.abstract_rl import AbstractRLHF
+from utils.data_types import RLConfig
 
 
 class GRPO(AbstractRLHF):
 
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        
+    def __init__(self, config: RLConfig):
+        super().__init__(config)
+
     def calc_loss(self, log_prob, old_log_prob, response_mask, advantages):
 
         ratio = torch.exp(log_prob - old_log_prob)     # (batch * K) x max_seq - 1
@@ -56,4 +30,3 @@ class GRPO(AbstractRLHF):
             loss /= (response_len + 1e-6)
 
         return loss.mean()
-

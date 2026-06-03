@@ -1,0 +1,37 @@
+device: cpu
+
+rl_config:
+  algorithm: grpo
+  max_epochs: 2
+  lr: 0.001
+  weight_decay: 0.1
+  grad_clip: 1.0
+  K: 4
+  eps_high: 0.28
+  eps_low: 0.2
+  kl: 0.0
+  num_updates: 1
+  adv_normalize: false
+  length_normalize: false
+  inference:
+    max_tokens: 16
+    temp: 1.0
+
+model_config:
+  num_layers: 2
+  vocab_size: 7
+  dim: 64
+  num_head: 4
+  head_dim: 16
+  max_seq: 64
+  causal: true
+  pos_embed_type: rope
+
+data_config:
+  domain: dyck
+  train_size: 16
+  val_size: 8
+  seed: 0
+  batch_size: 4
+  mean_prompt_length: 8
+  max_completion_length: 16

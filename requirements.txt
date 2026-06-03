@@ -1,0 +1,4 @@
+pydantic
+torch
+omegaconf
+pyyaml

@@ -26,7 +26,7 @@ Contains implementation of following algorithms:
 Contains two simple environments: 
 
 - Dyck language: the agent has to complete a partial list of unbalanced parenthesis.
-- Block arangement: given 
+- Block arangement: solve a block arrangement task 
 
 ## LLMs
 

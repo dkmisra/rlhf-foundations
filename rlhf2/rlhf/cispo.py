@@ -1,39 +1,14 @@
-import torch 
+import torch
 
-from rl.grpo import GRPO
-
-
-class CISPOConfig:
-
-    # optimization
-    max_epochs = 10
-    lr = 1e-3
-    weight_decay = 0.1
-    grad_clip = 1.0
-
-    # Core GRPO hyperparameters
-    K = 8       # Number of generations per K
-    eps_high = 0.28
-    eps_low = 0.20
-    kl = 0.0
-    num_updates = 1
-
-    # Dr. GRPO setting
-    adv_normalize = False 
-    length_normalize = False
-
-    # Generation setup
-    max_tokens = 40
-    temp = 1.0
-    top_p = 1.0
+from rlhf.grpo import GRPO
+from utils.data_types import RLConfig
 
 
 class CISPO(GRPO):
 
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-    
+    def __init__(self, config: RLConfig):
+        super().__init__(config)
+
     def calc_loss(self, log_prob, old_log_prob, response_mask, advantages):
         """
             CISPO objective is:
