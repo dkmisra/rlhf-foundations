@@ -6,6 +6,8 @@ This is a small compact codebase for learning RLHF concepts that you can run on 
 
 An accompanying PDF on RLHF foundations is planned for a later release this summer. If you have any specific request, then create an issue or email me.
 
+**This is a beta release (June-4-2026)**: Some features maybe broken. A stable release will come in under a week.
+
 ## Quick start
 
 Install the requirements, and run the code on a sample YAML file as shown:
