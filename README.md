@@ -33,18 +33,24 @@ python scripts/run_rl.py --config configs/dyck_grpo.yaml \
 rlhf2/
   rlhf/          # RL trainers (GRPO, GSPO, CISPO, TIS, IcePop), SFT, evaluation
   llm/           # Transformer, RoPE, MoE building blocks
-  tasks/         # Task environments and tokenizers (Dyck language)
+  tasks/         # Task environments and tokenizers (Dyck language, Block mirroring)
   utils/         # Pydantic configs and live Dash visualizer
 configs/         # Experiment YAML files
 scripts/         # Entry points (run_rl.py)
 ```
 
-## Training pipeline
-
 1. **Data** — Sample unique prompts from the task, split into train/val (`scripts/run_rl.py`).
 2. **SFT** (optional) — Supervise on `target_completion` with an EOS token; reference model for KL is cloned *after* SFT.
 3. **RL** — Batched rollout, reward, and policy update (GRPO-family objectives).
 4. **Monitoring** — Losses, gradient norms, rewards, and sample generations in the Dash UI.
+
+Two sample tasks are provided. These tasks are chosen to be only slightly hard so they can be trained in 10-20min on a Macbook.
+
+- **Dyck language** (`tasks/dyck.py`) — Complete a partial bracket string `([{` with valid closings from `( )`, `[ ]`, `{ }`. Reward is 1 when the full string is balanced, 0 otherwise.
+
+- **Block arrangement** — Mirror image a sequence of blocks (e.g., red red blue green -> green blue red red) (`tasks/block.py`).
+
+
 
 ## RL algorithms
 
@@ -60,15 +66,8 @@ Shared training logic lives in `rlhf/abstract_rl.py`. DPO and reward modeling ar
 
 Set the algorithm in config: `rl_config.algorithm: grpo` (also `gspo`, `cispo`, `tis`, `icepop`).
 
-## Tasks
 
-**Dyck language** (`tasks/dyck.py`) — Complete a partial bracket string `([{` with valid closings from `( )`, `[ ]`, `{ }`. Reward is 1 when the full string is balanced, 0 otherwise.
-
-**Block arrangement** — Placeholder only (`tasks/block.py`).
-
-Each task defines a tokenizer (with a required EOS token). Model `vocab_size` is taken from the task tokenizer, not from config.
-
-## LLM
+## LLM Implementation
 
 `llm/transformer.py` — Compact causal transformer with multi-head attention and RoPE (or absolute positions). `llm/moe.py` provides mixture-of-experts layers for studying train/inference mismatch (see `scripts/run_moe_mismatch.py`, stub).
 
@@ -84,7 +83,7 @@ Top-level config sections (see `utils/data_types.py`):
 | `visualize` | Live dashboard (port, logging frequency, generations table) |
 | `device` | e.g. `cpu` or `cuda` |
 
-Pydantic validates config; `model_config` was renamed to `llm_config` because `model_config` is reserved by Pydantic.
+OmegaConf is used to load configurations from yaml and command line, and pydantic is used for validation.
 
 ## Visualization
 

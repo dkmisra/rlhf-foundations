@@ -18,6 +18,7 @@ from rlhf.gspo import GSPO
 from rlhf.icepop import IcePop
 from rlhf.tis import TIS
 from tasks.abstract import AbstractTask, AbstractTokenizer
+from tasks.block import Block
 from tasks.dyck import Dyck
 from utils.data_types import Config, DataConfig
 from utils.visualize import create_visualizer
@@ -192,6 +193,14 @@ def load_config(config_path: Path, overrides: list[str]) -> Config:
 def build_task(data_config):
     if data_config.domain == "dyck":
         return Dyck(
+            mean_prompt_length=data_config.mean_prompt_length,
+            prompt_length_min=data_config.prompt_length_min,
+            prompt_length_max=data_config.prompt_length_max,
+            max_completion_length=data_config.max_completion_length,
+            rng=random.Random(data_config.seed),
+        )
+    if data_config.domain == "block":
+        return Block(
             mean_prompt_length=data_config.mean_prompt_length,
             prompt_length_min=data_config.prompt_length_min,
             prompt_length_max=data_config.prompt_length_max,
