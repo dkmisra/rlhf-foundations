@@ -54,6 +54,7 @@ class RLConfig(BaseModel):
     eps_low: float = 0.2
     kl: float = 0.0
     num_updates: int = 1
+    eval_every: int = Field(default=20, description="Run eval every N RL steps; 0 disables")
 
     # Dr. GRPO settings
     adv_normalize: bool = False

@@ -96,13 +96,8 @@ class AbstractRLHF:
         input_ids = inputs["input_ids"].to(device)
         attention_mask = inputs["attention_mask"].to(device)
         batch_size = input_ids.size(0)
-                
-        # New tokens are appended after the padded prompt block; decode from here
-        # (not from per-row prompt_lens, which would land on right-pad slots).
-        gen_start = input_ids.size(1)
-
+        
         kv_cache = None
-
         out_tokens = []
 
         for i in range(max_tokens):
@@ -255,8 +250,11 @@ class AbstractRLHF:
                     
                     kl_loss = 0.0
                     if self.config.kl > 0.0:
-                        # Compute standard loss
-                        kl_loss = ((log_prob - ref_log_prob) * response_mask[:, 1:]).sum(1).mean(0)
+                        # Compute K3 loss
+                        # K3: D(p||q) ~ logp/q + q/p - 1
+                        diff = log_prob - ref_log_prob
+                        kl_loss = diff + torch.exp(-diff) - 1
+                        kl_loss = (kl_loss * response_mask[:, 1:]).sum(1).mean(0)
                     else:
                         kl_loss = 0.0
                     
@@ -282,6 +280,6 @@ class AbstractRLHF:
                     print(f"Iteration {it}: Total Loss={loss:.4f}: RLHF loss={rlhf_loss:.4f}, KL loss={kl_loss:.4f}, Mean rewards {mean_reward:.2f}.")
                     it += 1
 
-                    if it % 20 == 0:
+                    if self.config.eval_every > 0 and it % self.config.eval_every == 0:
                         evaluate(self, eval_loader, model, tokenizer, reward_fn, visualizer=visualizer, phase="rl", step=it)
 

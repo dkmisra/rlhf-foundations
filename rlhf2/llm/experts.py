@@ -24,7 +24,7 @@ class SwishGLUMLP(nn.Module):
             gate = torch.silu(gate_in)
         else:
             gate = gate_in * torch.sigmoid(self.beta * gate_in)
-        return self.W_down(up * gate) + x
+        return self.W_down(up * gate)
 
 
 class MLP(nn.Module):
@@ -43,4 +43,4 @@ class MLP(nn.Module):
         )
     
     def forward(self, x):
-        return x + self.net(x)
+        return x

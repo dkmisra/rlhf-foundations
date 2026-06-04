@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from llm.experts import MLP
 
@@ -15,6 +16,7 @@ class MixtureOfExpert(nn.Module):
         self.dim = dim
 
         self.W_proj = nn.Linear(self.dim, len(self.experts))
+        self.W_noise = nn.Linear(self.dim, len(self.experts))
     
     def forward(self, x, return_loss=False):
         """
@@ -28,13 +30,14 @@ class MixtureOfExpert(nn.Module):
         x = x.view(batch * max_seq, -1)
         weights = self.W_proj(x)        # (B * N) x num_experts
 
+        if self.training:
+            # Add noise to the logits 
+            scale = F.softplus(self.W_noise(x))     # (B * N) x num_experts
+            weights += torch.randn_like(weights) * scale
+
         # Pick top_k experts
         # top_k_weights and top_k_expert_id are of size (B * N) x top_k
         top_k_weights, top_k_expert_id = torch.topk(weights, k=self.top_k, dim=-1)
-
-        if self.training:
-            # Add noise to the logits 
-            top_k_weights += torch.randn_like(top_k_weights) * 1.0 / float(len(self.experts))
 
         top_k_prob = torch.softmax(top_k_weights, dim=-1)       # (B * N) x top_k
 
@@ -72,10 +75,9 @@ class MixtureOfExpert(nn.Module):
                 # We need to put it back into out
                 out.scatter_add_(src=weighted_out, index=item_indices.expand([-1, dim]), dim=0)  # (B * N) x d
         
-        # Reshape and add residual connection
+        # Reshape
         out = out.view(batch, max_seq, dim)
-        out = out + x.view(batch, max_seq, dim)
-        
+
         if return_loss:
             # Fraction of tokens assigned to each expert
             experts_num_tokens = torch.FloatTensor(experts_num_tokens)      # num_experts

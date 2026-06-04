@@ -39,6 +39,7 @@ rl_config:
   eps_low: 0.2
   kl: 0.0
   num_updates: 1
+  eval_every: 20
   adv_normalize: false
   length_normalize: false
   inference:

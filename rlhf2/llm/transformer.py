@@ -117,10 +117,12 @@ class TransformerBlock(nn.Module):
             and self.training
         )
         if use_moe_loss:
-            x, moe_loss = self.ffn(x, return_loss=True)
+            out, moe_loss = self.ffn(x, return_loss=True)
+            x = out + x
             self._last_moe_loss = moe_loss
         else:
-            x = self.ffn(x)
+            out = self.ffn(x)
+            x = out + x
             self._last_moe_loss = None
         return x, new_kv_cache
 
