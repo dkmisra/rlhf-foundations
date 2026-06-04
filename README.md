@@ -1,19 +1,21 @@
 # RLHF Foundations
 
-A small, readable codebase for learning RLHF on a Mac or Linux machine. The focus is on clear implementations of recent policy-optimization methods, a simple MoE-based transformer, and simple task environments—not on large-scale distributed training. Main purpose here is for people new to post-training and RLHF, to use this to learn basic concepts on their computer without needing GPUs. 
+This is a small compact codebase for learning RLHF concepts that you can run on your Mac or Linux machine. Main purpose here is for people new to post-training and RLHF, to use this to learn basic concepts on their computer without needing GPUs. The code contains recent policy-optimization methods, a simple MoE-based transformer, and simple tasks environments that you can train on in 10-20min. 
 
-**Simulate Real-World Challenges:** Since the purpose of this repository is learning without access to a GPU cluster, one important feature here is to simulate certain bad behaviors that occur in practice. Currently, we simulate the issue that arise due to mismatch between log-probs in inference and training in LLMs which is specially bad for MoEs.
+**Simulate Real-World Challenges:** Since the purpose of this repository is learning without access to a GPU cluster, one important feature this codease provides is to simulate certain bad behaviors that occur in practice. Presently, we simulate the issue that arise due to mismatch between log-probs in inference and training in LLMs which is specially bad for MoEs.
 
-An accompanying PDF on RLHF foundations is planed for a later release this summer. If you have any specific request, then create an issue or email me.
+An accompanying PDF on RLHF foundations is planned for a later release this summer. If you have any specific request, then create an issue or email me.
 
 ## Quick start
+
+Install the requirements, and run the code on a sample YAML file as shown:
 
 ```bash
 pip install -r requirements.txt
 python scripts/run_rl.py --config configs/dyck_grpo.yaml
 ```
 
-The training script loads YAML config, applies optional CLI overrides (OmegaConf dot paths), runs supervised fine-tuning (SFT) when enabled, then RL. With visualization enabled, a live dashboard opens in your browser at `http://127.0.0.1:8050`. It will open a window and results will start filling in:
+The training script loads YAML config, applies optional CLI overrides (OmegaConf dot paths), runs supervised fine-tuning (SFT) when enabled, and then RL. With visualization enabled, a live dashboard opens in your browser at `http://127.0.0.1:8050`. It will open a window and results will start filling in as shown:
 
 ![visualization of results](img/visual.png)
 
@@ -40,7 +42,7 @@ scripts/         # Entry points (run_rl.py)
 ```
 
 1. **Data** — Sample unique prompts from the task, split into train/val (`scripts/run_rl.py`).
-2. **SFT** (optional) — Supervise on `target_completion` with an EOS token; reference model for KL is cloned *after* SFT.
+2. **SFT** (optional) — SFT is performed prior to RL by default.
 3. **RL** — Batched rollout, reward, and policy update (GRPO-family objectives).
 4. **Monitoring** — Losses, gradient norms, rewards, and sample generations in the Dash UI.
 
@@ -50,7 +52,7 @@ Two sample tasks are provided. These tasks are chosen to be only slightly hard s
 
 - **Block arrangement** — Mirror image a sequence of blocks (e.g., red red blue green -> green blue red red) (`tasks/block.py`).
 
-
+More tasks maybe added in the future.
 
 ## RL algorithms
 
@@ -66,10 +68,9 @@ Shared training logic lives in `rlhf/abstract_rl.py`. DPO and reward modeling ar
 
 Set the algorithm in config: `rl_config.algorithm: grpo` (also `gspo`, `cispo`, `tis`, `icepop`).
 
-
 ## LLM Implementation
 
-`llm/transformer.py` — Compact causal transformer with multi-head attention and RoPE (or absolute positions). `llm/moe.py` provides mixture-of-experts layers for studying train/inference mismatch (see `scripts/run_moe_mismatch.py`, stub).
+`llm/transformer.py` contains a compact causal transformer with multi-head attention and RoPE (or absolute positions). The file `llm/moe.py` provides mixture-of-experts layers and `llm/experts.py` provides list of expert models -- currently, MLP and SwishGLU.
 
 ## Configuration
 
@@ -77,7 +78,7 @@ Top-level config sections (see `utils/data_types.py`):
 
 | Section | Purpose |
 |---------|---------|
-| `data_config` | Domain, dataset sizes, batching, Dyck sampling |
+| `data_config` | Dataset sizes, batching, and domain specific hyperparameters |
 | `llm_config` | Transformer shape (layers, dim, heads, `max_seq`) |
 | `rl_config` | Algorithm, optimization, `K`, clipping, KL, `inference`, `sft` |
 | `visualize` | Live dashboard (port, logging frequency, generations table) |
@@ -95,7 +96,7 @@ The repository relies on basic packages such as `torch`, `pydantic`, `omegaconf`
 
 ## Contributing
 
-Issues and pull requests are welcome. Here are some future releases:
+Issues and pull requests are welcome. Here are features I'd like to add in the future:
 
 1. More tasks that are simple enough to be trained in under 20min on a Macbook Pro
 2. Tasks that require some simplistic version of reasoning and using process reward models for solving these.
