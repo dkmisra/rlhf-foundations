@@ -1,0 +1,53 @@
+device: cpu
+
+visualize:
+  enabled: true
+  port: 8050
+  open_browser: true
+  log_every: 1
+  generation_log_every: 20
+  max_generation_samples: 12
+
+data_config:
+  domain: block
+  train_size: 1600
+  val_size: 800
+  seed: 0
+  batch_size: 32
+  max_sample_attempts: 10000
+  mean_prompt_length: 5
+  max_completion_length: 16
+
+llm_config:
+  num_layers: 2
+  dim: 64
+  num_head: 4
+  head_dim: 16
+  max_seq: 64
+  causal: true
+  pos_embed_type: rope
+  ffn_type: mlp  # set to moe and add moe: {num_experts, top_k} to use MixtureOfExpert
+
+rl_config:
+  algorithm: grpo
+  max_epochs: 20
+  lr: 0.001
+  weight_decay: 0.1
+  grad_clip: 1.0
+  K: 4
+  eps_high: 0.28
+  eps_low: 0.2
+  kl: 0.0
+  num_updates: 1
+  adv_normalize: false
+  length_normalize: false
+  inference:
+    max_tokens: 16
+    temp: 1.0
+  sft:
+    enabled: true
+    max_epochs: 3
+    lr: 0.001
+    weight_decay: 0.1
+    grad_clip: 1.0
+    eval_every: 20
