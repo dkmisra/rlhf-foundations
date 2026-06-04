@@ -4,7 +4,7 @@ This is a small compact codebase for learning RLHF concepts that you can run on 
 
 **Simulate Real-World Challenges:** Since the purpose of this repository is learning without access to a GPU cluster, one important feature this codease provides is to simulate certain bad behaviors that occur in practice. Presently, we simulate the issue that arise due to mismatch between log-probs in inference and training in LLMs which is specially bad for MoEs.
 
-An accompanying PDF on RLHF foundations is planned for a later release this summer. If you have any specific request, then create an issue or email me.
+**Accompanying Book:** An accompanying PDF on RLHF foundations is planned for a later release this summer. If you have any specific request, then create an issue or email me.
 
 **This is a beta release (June-4-2026)**: Some features maybe broken. A stable release will come in under a week.
 
