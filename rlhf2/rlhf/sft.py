@@ -90,4 +90,5 @@ class SFTTrainer:
                         visualizer=visualizer,
                         phase="sft",
                         step=it,
+                        sft_trainer=self,
                     )

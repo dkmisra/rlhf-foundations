@@ -1,4 +1,7 @@
-import torch 
+import torch
+
+# FIXME(reward-modeling): get_reward_score still needs work before use — unpack (logits, _)
+# from Transformer, cumsum along the sequence dim on response_mask, and a scalar score head.
 
 
 class RewardModeling:
@@ -30,7 +33,7 @@ class RewardModeling:
         batch_size = scores.size(0) // 2
 
         scores_win = scores[:batch_size]
-        scores_loss = scores[batch_size:]
+        scores_rejected = scores[batch_size:]
         
-        loss = - torch.log_sigmoid(scores_win - scores_loss).mean()
+        loss = - torch.log_sigmoid(scores_win - scores_rejected).mean()
         return loss

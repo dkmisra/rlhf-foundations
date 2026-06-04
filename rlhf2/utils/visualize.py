@@ -29,17 +29,24 @@ MUTED_COLOR = "#64748b"
 GRID_COLOR = "#e2e8f0"
 BORDER_COLOR = "#e2e8f0"
 
-# (graph_id, series_key, title, color)
-METRIC_CHARTS = [
-    ("chart-sft-loss", "sft/loss", "SFT loss", "#2563eb"),
-    ("chart-rl-total-loss", "rl/total_loss", "RL total loss", "#db2777"),
-    ("chart-rl-grpo-loss", "rl/grpo_loss", "RL GRPO loss", "#e11d48"),
-    ("chart-rl-kl-loss", "rl/kl_loss", "RL KL loss", "#f472b6"),
-    ("chart-sft-grad", "sft/grad_norm", "SFT gradient norm", "#3b82f6"),
-    ("chart-rl-grad", "rl/grad_norm", "RL gradient norm", "#10b981"),
-    ("chart-rl-reward", "rl/mean_reward", "RL mean reward (train)", "#059669"),
-    ("chart-sft-eval", "sft/eval_reward", "SFT eval reward", "#0284c7"),
-    ("chart-rl-eval", "rl/eval_reward", "RL eval reward", "#0d9488"),
+# (graph_id, [(series_key, legend_label, color), ...], chart_title)
+METRIC_CHARTS: list[tuple[str, list[tuple[str, str, str]], str]] = [
+    ("chart-sft-loss", [("sft/loss", "SFT loss", "#2563eb")], "SFT loss"),
+    ("chart-rl-total-loss", [("rl/total_loss", "RL total loss", "#db2777")], "RL total loss"),
+    # Keep dom id chart-rl-grpo-loss stable (browser/callback ids); series key is rl/rlhf_loss.
+    ("chart-rl-grpo-loss", [("rl/rlhf_loss", "RL RLHF loss", "#e11d48")], "RL RLHF loss"),
+    ("chart-rl-kl-loss", [("rl/kl_loss", "RL KL loss", "#f472b6")], "RL KL loss"),
+    ("chart-sft-grad", [("sft/grad_norm", "SFT grad norm", "#3b82f6")], "SFT gradient norm"),
+    ("chart-rl-grad", [("rl/grad_norm", "RL grad norm", "#10b981")], "RL gradient norm"),
+    ("chart-rl-reward", [("rl/mean_reward", "Train reward", "#059669")], "RL mean reward (train)"),
+    ("chart-rl-entropy", [("rl/avg_entropy", "Entropy", "#7c3aed")], "RL avg entropy (response)"),
+    ("chart-sft-eval", [("sft/eval_reward", "Eval reward", "#0284c7")], "SFT eval reward"),
+    (
+        "chart-sft-eval-nll",
+        [("sft/eval_teacher_nll", "Teacher NLL", "#6366f1")],
+        "SFT eval teacher NLL",
+    ),
+    ("chart-rl-eval", [("rl/eval_reward", "Eval reward", "#0d9488")], "RL eval reward"),
 ]
 CHART_IDS = [spec[0] for spec in METRIC_CHARTS]
 
@@ -88,6 +95,13 @@ class TrainingVisualizer:
         )
         self._server_thread.start()
         time.sleep(1.2)
+        if self._server_thread is not None and not self._server_thread.is_alive():
+            print(
+                f"Warning: dashboard failed to start on port {self.config.port} "
+                "(port may be in use by a previous run). "
+                "Stop the old process or change visualize.port, then hard-refresh the browser."
+            )
+            return
         if self.config.open_browser:
             webbrowser.open(f"http://{self.config.host}:{self.config.port}")
 
@@ -117,10 +131,11 @@ class TrainingVisualizer:
         *,
         step: int | None = None,
         total_loss: float,
-        grpo_loss: float,
+        rlhf_loss: float,
         kl_loss: float,
         mean_reward: float,
         grad_norm_value: float,
+        avg_entropy: float | None = None,
     ) -> None:
         if not self.config.enabled:
             return
@@ -128,13 +143,18 @@ class TrainingVisualizer:
         if step % self.config.log_every != 0:
             return
         self.log_scalar("rl/total_loss", total_loss, step)
-        self.log_scalar("rl/grpo_loss", grpo_loss, step)
+        self.log_scalar("rl/rlhf_loss", rlhf_loss, step)
         self.log_scalar("rl/kl_loss", kl_loss, step)
         self.log_scalar("rl/mean_reward", mean_reward, step)
         self.log_scalar("rl/grad_norm", grad_norm_value, step)
+        if avg_entropy is not None:
+            self.log_scalar("rl/avg_entropy", avg_entropy, step)
 
     def log_eval_reward(self, reward: float, phase: str, step: int) -> None:
         self.log_scalar(f"{phase}/eval_reward", reward, step)
+
+    def log_eval_teacher_nll(self, nll: float, step: int) -> None:
+        self.log_scalar("sft/eval_teacher_nll", nll, step)
 
     def log_generations(
         self,
@@ -218,7 +238,10 @@ class TrainingVisualizer:
         return series, generations
 
     def _run_dash(self) -> None:
-        app = Dash(__name__)
+        metric_charts = list(METRIC_CHARTS)
+        chart_ids = [chart_id for chart_id, _, _ in metric_charts]
+
+        app = Dash(__name__, suppress_callback_exceptions=True)
         app.title = "RLHF Training Monitor"
 
         app.layout = html.Div(
@@ -253,7 +276,7 @@ class TrainingVisualizer:
                     },
                     children=[
                         dcc.Graph(id=chart_id, style={"height": "260px"})
-                        for chart_id in CHART_IDS
+                        for chart_id in chart_ids
                     ],
                 ),
                 html.H3("Recent generations", style={"marginTop": "8px"}),
@@ -261,16 +284,20 @@ class TrainingVisualizer:
             ],
         )
 
+        # Single multi-output callback (Dash batches all chart outputs in one request).
+        chart_outputs = [Output(chart_id, "figure") for chart_id in chart_ids]
+        table_output = Output("generations-table", "children")
+
         @app.callback(
-            [Output(chart_id, "figure") for chart_id in CHART_IDS]
-            + [Output("generations-table", "children")],
+            chart_outputs + [table_output],
             Input("refresh", "n_intervals"),
+            prevent_initial_call=False,
         )
-        def _update(_n: int):
+        def _update_all(_n: int):
             series, generations = self.snapshot()
             figures = [
-                self._build_line_chart(series, key, title, color)
-                for _, key, title, color in METRIC_CHARTS
+                self._build_line_chart(series, series_specs, title)
+                for _, series_specs, title in metric_charts
             ]
             return figures + [self._build_generations_table(generations)]
 
@@ -284,27 +311,28 @@ class TrainingVisualizer:
     def _build_line_chart(
         self,
         series: dict[str, list[tuple[int, float]]],
-        key: str,
+        series_specs: list[tuple[str, str, str]],
         title: str,
-        color: str,
     ) -> go.Figure:
         fig = go.Figure()
-        points = series.get(key, [])
-        if points:
+        has_data = False
+        for key, label, color in series_specs:
+            points = series.get(key, [])
+            if not points:
+                continue
+            has_data = True
             steps, values = zip(*points)
             fig.add_trace(
                 go.Scatter(
                     x=steps,
                     y=values,
                     mode="lines+markers",
-                    name=title,
+                    name=label,
                     line=dict(color=color, width=2),
                     marker=dict(size=5, color=color),
-                    fill="tozeroy",
-                    fillcolor=f"rgba({self._hex_to_rgb(color)}, 0.08)",
                 )
             )
-        else:
+        if not has_data:
             fig.add_annotation(
                 text="Waiting for data…",
                 xref="paper",
@@ -322,8 +350,8 @@ class TrainingVisualizer:
             plot_bgcolor=PLOT_BG,
             font=dict(color=TEXT_COLOR, size=12),
             margin=dict(l=48, r=16, t=40, b=40),
-            showlegend=False,
-            hovermode="x",
+            showlegend=len(series_specs) > 1,
+            hovermode="x unified",
         )
         fig.update_xaxes(title_text="step", gridcolor=GRID_COLOR, linecolor=BORDER_COLOR)
         fig.update_yaxes(gridcolor=GRID_COLOR, linecolor=BORDER_COLOR)

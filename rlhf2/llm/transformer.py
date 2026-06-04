@@ -158,13 +158,15 @@ class Transformer(nn.Module):
 
         self.W_proj = nn.Linear(llm_config.dim, vocab_size)
     
-    def forward(self, input_ids, attention_mask, kv_caches=None):
+    def forward(self, input_ids, attention_mask, kv_caches=None, noise=False):
         """
             input_ids: long tensor of size (bach, seq_len)
             attention_mask: float tensor of size (batch, kv_len + seq_len)
             kv_caches: list of tuples of size num_layers. Each tuple contains the key and value tensors of the previous layers.
                        The key and value tensors are of size (batch, kv_len, num_head, head_dim).
                        If None, it is assumed to be empty.
+            noise: If True, then adds random noise to each layer to simulate mismatch that occurs due to inference-training. 
+                   This is purely for simulation purposes.
 
             Returns:
                 logits: float tensor of size (batch, seq_len, vocab_size)
@@ -184,6 +186,10 @@ class Transformer(nn.Module):
         new_kv_caches = []
         moe_aux_loss: torch.Tensor | float = 0.0
         for i, layer in enumerate(self.layers):
+
+            if noise:
+                x += torch.randn_like(x) * self.llm_config.noise_scale
+
             x, new_kv_cache = layer(
                 x,
                 attention_mask,

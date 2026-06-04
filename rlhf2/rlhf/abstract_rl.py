@@ -57,37 +57,24 @@ class AbstractRLHF:
                 
         return input_ids, attention_mask, response_mask, advantages
     
-    def calc_log_prob(self, model, input_ids, attention_mask):
+    def calc_log_prob(self, model, input_ids, attention_mask, calc_entropy=False, noise=False):
 
-        logits, _ = model(input_ids, attention_mask)       # (batch * K) x max_seq x vocab
-        log_prob = torch.log_softmax(logits, dim=2)     # (batch * K) x max_seq x vocab
+        logits, _ = model(input_ids, attention_mask, noise=noise)  # (batch * K) x max_seq x vocab
+        log_prob = torch.log_softmax(logits, dim=2)                # (batch * K) x max_seq x vocab
+
+        entropy = None
+        if calc_entropy:
+            entropy = - (torch.exp(log_prob) * log_prob).sum(2)  # (batch * K) x max_seq
+
         log_prob = torch.gather(log_prob[:, :-1, :], 
                                 index=input_ids[:, 1:].unsqueeze(2), 
                                 dim=2)                  # (batch * K) x max_seq - 1 x 1
         log_prob = log_prob.squeeze(2)                  # (batch * K) x max_seq - 1
-        return log_prob 
+
+        return log_prob, entropy
         
-    def calc_loss(self, log_prob, old_log_prob, response_mask, advantages):
-
-        ratio = torch.exp(log_prob - old_log_prob)     # (batch * K) x max_seq - 1
-        clipped_term = torch.clamp(ratio, min=1 - self.config.eps_low, max=1 + self.config.eps_high) * advantages.unsqueeze(1)
-
-        loss = - torch.minimum(ratio * advantages.unsqueeze(1), clipped_term)   # (batch * K) x max_seq - 1
-        loss = loss * response_mask                    # (batch * K) x max_seq - 1
-        loss = loss.sum(1)                             # (batch * K)
-
-        response_len = response_mask.sum(1).float()  # (batch * K)    
-        if self.config.length_normalize:
-            loss /= (response_len + 1e-6)
-        else:
-            # Normalize each batch by total response
-            response_len = response_len.view(-1, self.config.K)     # Batch x K
-            response_len = response_len.sum(1, keepdim=True)      # batch x 1
-            response_len = response_len.expand([-1, self.config.K]) # batch x K
-            response_len = response_len.reshape(-1)
-            loss /= (response_len + 1e-6)
-
-        return loss.mean()
+    def calc_loss(self, log_prob, old_log_prob, infer_old_log_prob, response_mask, advantages):
+        raise NotImplementedError()
 
     @torch.no_grad()
     def generate(self, model, prompts: list[str], tokenizer, K: int = 1) -> list[list[str]]:
@@ -209,6 +196,8 @@ class AbstractRLHF:
             print("SFT stage complete. Starting RL...")
 
         model_ref = self._clone_reference_model(model) if self.config.kl > 0.0 else None
+        if model_ref is not None:
+            model_ref.eval()
 
         optimizer = opt.AdamW(model.parameters(), lr=self.config.lr, weight_decay=self.config.weight_decay)
         device = next(model.parameters()).device
@@ -226,7 +215,6 @@ class AbstractRLHF:
                 batch_with_gens_and_rewards, mean_reward = self.collect_data(
                     data, model, tokenizer, reward_fn, visualizer=visualizer, log_step=it, log_phase="rl"
                 )
-                model.train()
 
                 # Step 2: Prepare the data for training
                 input_ids, attention_mask, response_mask, advantages = self.prepare_data(
@@ -236,22 +224,34 @@ class AbstractRLHF:
                 attention_mask = attention_mask.to(device)
                 response_mask = response_mask.to(device)
                 advantages = advantages.to(device)
+                
+                model.eval()    
+
+                # TODO: Only compute this for TIS and IcePop
+                infer_old_log_prob = None
+                if self.config.algorithm in ["tis", "icepop"]:
+                    with torch.no_grad():
+                        # We add noise to simulate mismatch between inference and training engines
+                        infer_old_log_prob, _ = self.calc_log_prob(model, input_ids, attention_mask, noise=True)
+                        infer_old_log_prob = infer_old_log_prob.detach()
 
                 with torch.no_grad():
-                    old_log_prob = self.calc_log_prob(model, input_ids, attention_mask)
+                    old_log_prob, _ = self.calc_log_prob(model, input_ids, attention_mask)
                     old_log_prob = old_log_prob.detach()
                 
                 if self.config.kl > 0.0:
                     with torch.no_grad():
-                        ref_log_prob = self.calc_log_prob(model_ref, input_ids, attention_mask)
+                        ref_log_prob, _ = self.calc_log_prob(model_ref, input_ids, attention_mask)
                         ref_log_prob = ref_log_prob.detach()
 
                 # Step 3: Do RLHF training
+                model.train()
                 for _ in range(self.config.num_updates):
 
-                    log_prob = self.calc_log_prob(model, input_ids, attention_mask)
+                    log_prob, entropy = self.calc_log_prob(model, input_ids, attention_mask, calc_entropy=True)
                     
-                    grpo_loss = self.calc_loss(log_prob, old_log_prob, response_mask[:, 1:], advantages)
+                    rlhf_loss = self.calc_loss(log_prob, old_log_prob, infer_old_log_prob, response_mask[:, 1:], advantages)
+                    avg_entropy = ((entropy * response_mask).sum(1) / (response_mask.sum(1) + 1e-6)).mean()
                     
                     kl_loss = 0.0
                     if self.config.kl > 0.0:
@@ -260,7 +260,7 @@ class AbstractRLHF:
                     else:
                         kl_loss = 0.0
                     
-                    loss = grpo_loss + self.config.kl * kl_loss + getattr(model, "moe_aux_loss", 0.0)
+                    loss = rlhf_loss + self.config.kl * kl_loss + getattr(model, "moe_aux_loss", 0.0)
 
                     optimizer.zero_grad()
                     loss.backward()
@@ -272,13 +272,14 @@ class AbstractRLHF:
                         visualizer.log_rl_step(
                             step=it,
                             total_loss=float(loss.item()),
-                            grpo_loss=float(grpo_loss.item()),
+                            rlhf_loss=float(rlhf_loss.item()),
                             kl_loss=float(kl_loss if isinstance(kl_loss, float) else kl_loss.item()),
                             mean_reward=float(mean_reward),
                             grad_norm_value=gn,
+                            avg_entropy=float(avg_entropy.item()),
                         )
                     
-                    print(f"Iteration {it}: Loss={loss:.4f}: GRPO loss={grpo_loss:.4f}, KL loss={kl_loss:.4f}, Mean rewards {mean_reward:.2f}.")
+                    print(f"Iteration {it}: Total Loss={loss:.4f}: RLHF loss={rlhf_loss:.4f}, KL loss={kl_loss:.4f}, Mean rewards {mean_reward:.2f}.")
                     it += 1
 
                     if it % 20 == 0:

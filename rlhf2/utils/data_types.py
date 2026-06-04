@@ -93,6 +93,10 @@ class LLMConfig(BaseModel):
         default="mlp",
         description="Feed-forward block: dense MLP or mixture-of-experts",
     )
+    noise_scale: float = Field(
+        default=0.01,
+        description="Per-layer activation noise when forward(noise=True); simulates infer/train mismatch",
+    )
     moe: MoEConfig | None = Field(
         default=None,
         description="Required when ffn_type is moe",

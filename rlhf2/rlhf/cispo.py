@@ -9,7 +9,7 @@ class CISPO(GRPO):
     def __init__(self, config: RLConfig):
         super().__init__(config)
 
-    def calc_loss(self, log_prob, old_log_prob, response_mask, advantages):
+    def calc_loss(self, log_prob, old_log_prob, infer_old_log_prob, response_mask, advantages):
         r"""
             CISPO objective is:
 

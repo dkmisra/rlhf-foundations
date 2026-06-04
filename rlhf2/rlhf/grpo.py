@@ -9,7 +9,7 @@ class GRPO(AbstractRLHF):
     def __init__(self, config: RLConfig):
         super().__init__(config)
 
-    def calc_loss(self, log_prob, old_log_prob, response_mask, advantages):
+    def calc_loss(self, log_prob, old_log_prob, infer_old_log_prob, response_mask, advantages):
 
         ratio = torch.exp(log_prob - old_log_prob)     # (batch * K) x max_seq - 1
         clipped_term = torch.clamp(ratio, min=1 - self.config.eps_low, max=1 + self.config.eps_high) * advantages.unsqueeze(1)

@@ -13,7 +13,9 @@ pip install -r requirements.txt
 python scripts/run_rl.py --config configs/dyck_grpo.yaml
 ```
 
-The training script loads YAML config, applies optional CLI overrides (OmegaConf dot paths), runs supervised fine-tuning (SFT) when enabled, then RL. With visualization enabled, a live dashboard opens in your browser at `http://127.0.0.1:8050`.
+The training script loads YAML config, applies optional CLI overrides (OmegaConf dot paths), runs supervised fine-tuning (SFT) when enabled, then RL. With visualization enabled, a live dashboard opens in your browser at `http://127.0.0.1:8050`. It will open a window and results will start filling in:
+
+![visualization of results](img/visual.png)
 
 Override any field from the command line:
 
@@ -52,7 +54,7 @@ scripts/         # Entry points (run_rl.py)
 | GSPO | `rlhf/gspo.py` | [Paper](https://arxiv.org/pdf/2507.18071) |
 | CISPO | `rlhf/cispo.py` | [Paper](https://arxiv.org/pdf/2506.13585) |
 | TIS | `rlhf/tis.py` | [Blog](https://fengyao.notion.site/off-policy-rl) |
-| IcePop | `rlhf/icepop.py` | Importance-sampling variant |
+| IcePop | `rlhf/icepop.py` | [Blog](https://ringtech.notion.site/icepop) |
 
 Shared training logic lives in `rlhf/abstract_rl.py`. DPO and reward modeling are in `rlhf/dpo.py` and `rlhf/reward_modeling.py` for preference-style experiments.
 
@@ -90,7 +92,7 @@ Pydantic validates config; `model_config` was renamed to `llm_config` because `m
 
 ## Dependencies
 
-`torch`, `pydantic`, `omegaconf`, `pyyaml`, `dash`, `plotly` — see `requirements.txt`.
+The repository relies on basic packages such as `torch`, `pydantic`, `omegaconf`, `pyyaml`, `dash`, and `plotly`. See `requirements.txt` for up to date list.
 
 ## Contributing
 
