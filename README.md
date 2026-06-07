@@ -96,7 +96,17 @@ OmegaConf is used to load configurations from yaml and command line, and pydanti
 
 ## Dependencies
 
-The repository relies on basic packages such as `torch`, `pydantic`, `omegaconf`, `pyyaml`, `dash`, and `plotly`. See `pyproject.toml` for the up to date list. Run the test suite with `uv run pytest` (installs the `dev` extras, including `pytest`).
+The repository relies on basic packages such as `torch`, `pydantic`, `omegaconf`, `pyyaml`, `dash`, and `plotly`. See `pyproject.toml` for the up to date list.
+
+## Running tests
+
+Run the test suite with:
+
+```bash
+uv run pytest
+```
+
+This syncs the environment (including the `dev` extras, which provide `pytest`) before running, so no separate install step is needed.
 
 ## Contributing
 
