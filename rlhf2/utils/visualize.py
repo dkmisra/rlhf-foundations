@@ -105,6 +105,25 @@ class TrainingVisualizer:
         if self.config.open_browser:
             webbrowser.open(f"http://{self.config.host}:{self.config.port}")
 
+    def block_until_exit(self) -> None:
+        """Keep the (daemon) dashboard server alive after training finishes.
+
+        Without this the process exits as soon as training returns, killing the
+        server thread so the live page stops responding (e.g. the smoothing
+        slider no longer triggers a redraw). Blocks until Ctrl+C.
+        """
+        if not self.config.enabled or self._server_thread is None:
+            return
+        print(
+            f"Training complete. Dashboard still live at "
+            f"http://{self.config.host}:{self.config.port} — press Ctrl+C to exit."
+        )
+        try:
+            while self._server_thread.is_alive():
+                self._server_thread.join(timeout=1.0)
+        except KeyboardInterrupt:
+            print("Shutting down dashboard.")
+
     def log_scalar(self, name: str, value: float, step: int) -> None:
         if not self.config.enabled:
             return

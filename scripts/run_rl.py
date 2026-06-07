@@ -259,6 +259,9 @@ def run_experiment(config: Config) -> None:
     )
     trainer.train(model, train_loader, eval_loader, tokenizer, reward_fn, visualizer)
 
+    if visualizer is not None:
+        visualizer.block_until_exit()
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run RLHF training from YAML config")
