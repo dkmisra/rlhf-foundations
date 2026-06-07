@@ -68,7 +68,7 @@ More tasks maybe added in the future.
 | TIS | `TISTrainer` | `rlhf/tis_trainer.py` | [Blog](https://fengyao.notion.site/off-policy-rl) |
 | IcePop | `IcePopTrainer` | `rlhf/icepop_trainer.py` | [Blog](https://ringtech.notion.site/icepop) |
 
-Shared training logic lives in the `RLHFTrainer` abstract base class (`rlhf/rlhf_trainer.py`); each algorithm above subclasses it and implements `calc_loss`. SFT is handled by `SFTTrainer` (`rlhf/sft_trainer.py`). DPO and reward modeling are in `DPOTrainer` (`rlhf/dpo_trainer.py`) and `rlhf/reward_modeling.py` for preference-style experiments.
+Shared training logic (rollout generation, data preparation, the SFT-then-RL loop) lives in `GRPOTrainer` (`rlhf/grpo_trainer.py`); the other algorithms above subclass it and override `calc_loss`. SFT is handled by `SFTTrainer` (`rlhf/sft_trainer.py`). DPO and reward modeling are in `DPOTrainer` (`rlhf/dpo_trainer.py`) and `rlhf/reward_modeling.py` for preference-style experiments.
 
 Set the algorithm in config: `rl_config.algorithm: grpo` (also `gspo`, `cispo`, `tis`, `icepop`).
 
