@@ -24,7 +24,7 @@ def test_is_balanced(text, balanced):
 def test_get_task_target_completion_balances_prompt():
     task = Dyck(rng=random.Random(0))
     for _ in range(20):
-        item = task.get_task()
+        item = task.generate_sample()
         assert Dyck.is_balanced(item["prompt"] + item["target_completion"])
         assert item["open_stack"], "a Dyck task should have unmatched open brackets"
 

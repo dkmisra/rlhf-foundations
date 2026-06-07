@@ -95,7 +95,7 @@ class Block(AbstractTask):
         self.prompt_length_min = lo
         self.prompt_length_max = hi
 
-    def get_task(self) -> dict:
+    def generate_sample(self) -> dict:
         """Sample a block sequence and its mirror image."""
         length = self.rng.randint(self.prompt_length_min, self.prompt_length_max)
         blocks = [self.rng.choice(self.COLORS) for _ in range(length)]

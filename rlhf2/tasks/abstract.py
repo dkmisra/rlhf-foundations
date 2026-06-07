@@ -92,8 +92,8 @@ class AbstractTask(ABC):
         return cls.tokenizer
 
     @abstractmethod
-    def get_task(self):
-        """Return a task dict with at least a ``prompt`` field."""
+    def generate_sample(self):
+        """Generate a fresh task sample as a dict with at least a ``prompt`` field."""
 
     @abstractmethod
     def compute_reward(self, prompt: str, completion: str) -> float:

@@ -70,7 +70,7 @@ def collect_unique_prompts(
     attempts = 0
 
     while len(prompt_to_item) < num_unique and attempts < max_attempts:
-        item = task.get_task()
+        item = task.generate_sample()
         attempts += 1
         prompt = item["prompt"]
         if prompt not in prompt_to_item:

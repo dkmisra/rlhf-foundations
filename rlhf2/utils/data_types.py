@@ -122,7 +122,7 @@ class DataConfig(BaseModel):
     seed: int = Field(description="Random seed for data sampling")
     batch_size: int = 8
     max_sample_attempts: int = Field(
-        description="Max get_task calls when collecting unique prompts",
+        description="Max generate_sample calls when collecting unique prompts",
     )
     oversample: bool = Field(
         default=False,
