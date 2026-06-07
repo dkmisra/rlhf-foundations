@@ -10,7 +10,7 @@ from typing import Any
 
 import torch
 
-from utils.data_types import VisualizeConfig
+from rlhf2.utils.data_types import VisualizeConfig
 
 try:
     from dash import Dash, Input, Output, dash_table, dcc, html

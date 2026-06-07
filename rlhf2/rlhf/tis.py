@@ -1,7 +1,7 @@
 import torch
 
-from rlhf.grpo import GRPO
-from utils.data_types import RLConfig
+from rlhf2.rlhf.grpo import GRPO
+from rlhf2.utils.data_types import RLConfig
 
 
 class TIS(GRPO):

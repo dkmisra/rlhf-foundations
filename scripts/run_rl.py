@@ -1,27 +1,25 @@
 import argparse
 import random
 import re
-import sys
 from pathlib import Path
 
 import torch
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader, Dataset
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "rlhf2"))
+from rlhf2.llm.transformer import Transformer
+from rlhf2.rlhf.cispo import CISPO
+from rlhf2.rlhf.grpo import GRPO
+from rlhf2.rlhf.gspo import GSPO
+from rlhf2.rlhf.icepop import IcePop
+from rlhf2.rlhf.tis import TIS
+from rlhf2.tasks.abstract import AbstractTask, AbstractTokenizer
+from rlhf2.tasks.block import Block
+from rlhf2.tasks.dyck import Dyck
+from rlhf2.utils.data_types import Config, DataConfig
+from rlhf2.utils.visualize import create_visualizer
 
-from llm.transformer import Transformer
-from rlhf.cispo import CISPO
-from rlhf.grpo import GRPO
-from rlhf.gspo import GSPO
-from rlhf.icepop import IcePop
-from rlhf.tis import TIS
-from tasks.abstract import AbstractTask, AbstractTokenizer
-from tasks.block import Block
-from tasks.dyck import Dyck
-from utils.data_types import Config, DataConfig
-from utils.visualize import create_visualizer
+ROOT = Path(__file__).resolve().parents[1]
 
 
 ALGORITHMS = {

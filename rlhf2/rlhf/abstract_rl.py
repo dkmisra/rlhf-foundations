@@ -3,10 +3,10 @@ import copy
 import torch 
 import torch.optim as opt
 
-from rlhf.evaluate import evaluate
-from rlhf.sft import SFTTrainer
-from utils.data_types import RLConfig
-from utils.visualize import grad_norm
+from rlhf2.rlhf.evaluate import evaluate
+from rlhf2.rlhf.sft import SFTTrainer
+from rlhf2.utils.data_types import RLConfig
+from rlhf2.utils.visualize import grad_norm
 
 
 class AbstractRLHF:

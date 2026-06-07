@@ -1,6 +1,6 @@
 import random
 
-from .abstract import AbstractTokenizer, AbstractTask
+from rlhf2.tasks.abstract import AbstractTokenizer, AbstractTask
 
 _OPEN = "([{"
 _CLOSE = ")]}"

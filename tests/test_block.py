@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from tasks.block import Block, BlockTokenizer
+from rlhf2.tasks.block import Block, BlockTokenizer
 
 
 @pytest.mark.parametrize(

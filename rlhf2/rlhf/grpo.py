@@ -1,7 +1,7 @@
 import torch
 
-from rlhf.abstract_rl import AbstractRLHF
-from utils.data_types import RLConfig
+from rlhf2.rlhf.abstract_rl import AbstractRLHF
+from rlhf2.utils.data_types import RLConfig
 
 
 class GRPO(AbstractRLHF):

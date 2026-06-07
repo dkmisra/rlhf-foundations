@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from utils.data_types import LLMConfig, MoEConfig
+from rlhf2.utils.data_types import LLMConfig, MoEConfig
 
 
 def _base_kwargs(**overrides):

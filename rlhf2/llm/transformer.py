@@ -2,11 +2,11 @@ import math
 import torch 
 import torch.nn as nn 
 
-from llm.rope import Rope
-from llm.sinpos_absolute import SinPosAbsoluteEmbedding
-from utils.data_types import LLMConfig
-from llm.moe import MixtureOfExpert
-from llm.experts import MLP, SwishGLUMLP
+from rlhf2.llm.rope import Rope
+from rlhf2.llm.sinpos_absolute import SinPosAbsoluteEmbedding
+from rlhf2.utils.data_types import LLMConfig
+from rlhf2.llm.moe import MixtureOfExpert
+from rlhf2.llm.experts import MLP, SwishGLUMLP
 
 
 class MultiHeadAttention(nn.Module):
@@ -95,7 +95,7 @@ class TransformerBlock(nn.Module):
         if llm_config.ffn_type == "mlp":
             self.ffn = MLP(dim)
         elif llm_config.ffn_type == "moe":
-            from llm.moe import MixtureOfExpert
+            from rlhf2.llm.moe import MixtureOfExpert
 
             moe_config = llm_config.moe
             if moe_config is None:

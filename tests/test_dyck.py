@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from tasks.dyck import Dyck
+from rlhf2.tasks.dyck import Dyck
 
 
 @pytest.mark.parametrize(

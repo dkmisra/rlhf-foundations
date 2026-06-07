@@ -1,6 +1,0 @@
-pydantic
-torch
-omegaconf
-pyyaml
-dash
-plotly

@@ -10,12 +10,13 @@ This is a small compact codebase for learning RLHF concepts that you can run on 
 
 ## Quick start
 
-Install the requirements, and run the code on a sample YAML file as shown:
+This project uses [uv](https://docs.astral.sh/uv/) for environment and dependency management. Ensure uv is installed by following the [official installation guide](https://docs.astral.sh/uv/getting-started/installation/), then run the code on a sample YAML file as shown:
 
 ```bash
-pip install -r requirements.txt
-python scripts/run_rl.py --config configs/dyck_grpo.yaml
+uv run scripts/run_rl.py --config configs/dyck_grpo.yaml
 ```
+
+`uv run` automatically creates a virtual environment and installs the dependencies (declared in `pyproject.toml`) on first use, so there is no separate install step.
 
 The training script loads YAML config, applies optional CLI overrides (OmegaConf dot paths), runs supervised fine-tuning (SFT) when enabled, and then RL. With visualization enabled, a live dashboard opens in your browser at `http://127.0.0.1:8050`. It will open a window and results will start filling in as shown:
 
@@ -24,7 +25,7 @@ The training script loads YAML config, applies optional CLI overrides (OmegaConf
 Override any field from the command line:
 
 ```bash
-python scripts/run_rl.py --config configs/dyck_grpo.yaml \
+uv run scripts/run_rl.py --config configs/dyck_grpo.yaml \
   rl_config.algorithm=gspo \
   rl_config.max_epochs=5 \
   data_config.train_size=32 \
@@ -41,6 +42,7 @@ rlhf2/
   utils/         # Pydantic configs and live Dash visualizer
 configs/         # Experiment YAML files
 scripts/         # Entry points (run_rl.py)
+pyproject.toml   # Project metadata and dependencies (managed with uv)
 ```
 
 1. **Data** — Sample unique prompts from the task, split into train/val (`scripts/run_rl.py`).
@@ -94,7 +96,7 @@ OmegaConf is used to load configurations from yaml and command line, and pydanti
 
 ## Dependencies
 
-The repository relies on basic packages such as `torch`, `pydantic`, `omegaconf`, `pyyaml`, `dash`, and `plotly`. See `requirements.txt` for up to date list.
+The repository relies on basic packages such as `torch`, `pydantic`, `omegaconf`, `pyyaml`, `dash`, and `plotly`. See `pyproject.toml` for the up to date list. Run the test suite with `uv run pytest` (installs the `dev` extras, including `pytest`).
 
 ## Contributing
 

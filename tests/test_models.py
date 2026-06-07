@@ -1,7 +1,7 @@
 import torch
 
-from llm.transformer import Transformer
-from utils.data_types import LLMConfig
+from rlhf2.llm.transformer import Transformer
+from rlhf2.utils.data_types import LLMConfig
 
 
 def test_transformer_forward_shapes():

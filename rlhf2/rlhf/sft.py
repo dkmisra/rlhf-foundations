@@ -1,9 +1,9 @@
 import torch
 import torch.optim as optim
 
-from rlhf.evaluate import evaluate
-from utils.data_types import SFTConfig
-from utils.visualize import grad_norm
+from rlhf2.rlhf.evaluate import evaluate
+from rlhf2.utils.data_types import SFTConfig
+from rlhf2.utils.visualize import grad_norm
 
 
 class SFTTrainer:
