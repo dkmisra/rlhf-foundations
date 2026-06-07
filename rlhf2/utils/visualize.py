@@ -254,15 +254,54 @@ class TrainingVisualizer:
             },
             children=[
                 html.Div(
-                    style={"marginBottom": "20px"},
+                    style={
+                        "display": "flex",
+                        "justifyContent": "space-between",
+                        "alignItems": "flex-start",
+                        "gap": "24px",
+                        "marginBottom": "20px",
+                    },
                     children=[
-                        html.H1(
-                            "RLHF Training Monitor",
-                            style={"margin": 0, "fontWeight": 700, "letterSpacing": "-0.02em"},
+                        html.Div(
+                            children=[
+                                html.H1(
+                                    "RLHF Training Monitor",
+                                    style={
+                                        "margin": 0,
+                                        "fontWeight": 700,
+                                        "letterSpacing": "-0.02em",
+                                    },
+                                ),
+                                html.P(
+                                    "Live metrics (one chart per series) and sampled generations.",
+                                    style={"margin": "8px 0 0", "color": MUTED_COLOR},
+                                ),
+                            ],
                         ),
-                        html.P(
-                            "Live metrics (one chart per series) and sampled generations.",
-                            style={"margin": "8px 0 0", "color": MUTED_COLOR},
+                        html.Div(
+                            style={"width": "220px", "flexShrink": 0},
+                            children=[
+                                html.Label(
+                                    "Smoothing",
+                                    style={
+                                        "fontSize": "13px",
+                                        "fontWeight": 600,
+                                        "color": MUTED_COLOR,
+                                    },
+                                ),
+                                dcc.Slider(
+                                    id="smoothing-slider",
+                                    min=0,
+                                    max=1,
+                                    step=0.05,
+                                    value=0,
+                                    marks={0: "0", 0.5: "0.5", 1: "1"},
+                                    tooltip={
+                                        "placement": "bottom",
+                                        "always_visible": False,
+                                    },
+                                ),
+                            ],
                         ),
                     ],
                 ),
@@ -290,13 +329,13 @@ class TrainingVisualizer:
 
         @app.callback(
             chart_outputs + [table_output],
-            Input("refresh", "n_intervals"),
+            [Input("refresh", "n_intervals"), Input("smoothing-slider", "value")],
             prevent_initial_call=False,
         )
-        def _update_all(_n: int):
+        def _update_all(_n: int, smoothing: float | None):
             series, generations = self.snapshot()
             figures = [
-                self._build_line_chart(series, series_specs, title)
+                self._build_line_chart(series, series_specs, title, smoothing or 0.0)
                 for _, series_specs, title in metric_charts
             ]
             return figures + [self._build_generations_table(generations)]
@@ -308,11 +347,30 @@ class TrainingVisualizer:
             use_reloader=False,
         )
 
+    @staticmethod
+    def _smooth(values: tuple[float, ...], weight: float) -> list[float]:
+        """TensorBoard-style exponential moving average with debiasing.
+
+        `weight` in [0, 1): higher means smoother. Clamped below 1 so the top of
+        the slider stays meaningful instead of collapsing onto the first value.
+        """
+        weight = min(weight, 0.99)
+        smoothed: list[float] = []
+        last = 0.0
+        num_accum = 0
+        for value in values:
+            last = last * weight + (1 - weight) * value
+            num_accum += 1
+            debias = 1 - weight**num_accum
+            smoothed.append(last / debias if debias > 0 else value)
+        return smoothed
+
     def _build_line_chart(
         self,
         series: dict[str, list[tuple[int, float]]],
         series_specs: list[tuple[str, str, str]],
         title: str,
+        smoothing: float = 0.0,
     ) -> go.Figure:
         fig = go.Figure()
         has_data = False
@@ -322,16 +380,38 @@ class TrainingVisualizer:
                 continue
             has_data = True
             steps, values = zip(*points)
-            fig.add_trace(
-                go.Scatter(
-                    x=steps,
-                    y=values,
-                    mode="lines+markers",
-                    name=label,
-                    line=dict(color=color, width=2),
-                    marker=dict(size=5, color=color),
+            if smoothing > 0:
+                fig.add_trace(
+                    go.Scatter(
+                        x=steps,
+                        y=values,
+                        mode="lines",
+                        name=label,
+                        line=dict(color=f"rgba({self._hex_to_rgb(color)}, 0.25)", width=1),
+                        showlegend=False,
+                        hoverinfo="skip",
+                    )
                 )
-            )
+                fig.add_trace(
+                    go.Scatter(
+                        x=steps,
+                        y=self._smooth(values, smoothing),
+                        mode="lines",
+                        name=label,
+                        line=dict(color=color, width=2),
+                    )
+                )
+            else:
+                fig.add_trace(
+                    go.Scatter(
+                        x=steps,
+                        y=values,
+                        mode="lines+markers",
+                        name=label,
+                        line=dict(color=color, width=2),
+                        marker=dict(size=5, color=color),
+                    )
+                )
         if not has_data:
             fig.add_annotation(
                 text="Waiting for data…",
