@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import Literal
 
 import torch
 
 
-class AbstractTokenizer:
+class AbstractTokenizer(ABC):
     """Character- or token-level encoder with padding id 0."""
 
     PAD_ID = 0
@@ -28,13 +29,13 @@ class AbstractTokenizer:
         """Embedding vocabulary size (pad id 0 plus token ids 1..len(vocab))."""
         return len(self.token_to_idx) + 1
 
+    @abstractmethod
     def tokenize(self, prompt: str) -> list[str]:
         """Split a string into a list of token strings."""
-        raise NotImplementedError()
 
+    @abstractmethod
     def decode(self, tokens: list[int]) -> str:
         """Decode token ids back to text, skipping padding and EOS."""
-        raise NotImplementedError()
 
     def batch_encode(
         self, prompts: list[str], padding: bool = False
@@ -81,7 +82,7 @@ class AbstractTokenizer:
         return {"input_ids": input_ids, "attention_mask": attention_mask}
 
 
-class AbstractTask:
+class AbstractTask(ABC):
     tokenizer: AbstractTokenizer | None = None
 
     @classmethod
@@ -90,10 +91,10 @@ class AbstractTask:
             raise ValueError(f"Task {cls.__name__} does not define a tokenizer")
         return cls.tokenizer
 
+    @abstractmethod
     def get_task(self):
         """Return a task dict with at least a ``prompt`` field."""
-        raise NotImplementedError
 
+    @abstractmethod
     def compute_reward(self, prompt: str, completion: str) -> float:
         """Return 1.0 if balanced, else 0.0."""
-        raise NotImplementedError
