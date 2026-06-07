@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 
-class DPO:
+class DPOTrainer:
 
     def __init__(self, beta, alpha=0.0, p=1.0):
         """

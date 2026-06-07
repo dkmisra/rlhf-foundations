@@ -1,15 +1,21 @@
 import copy
+from abc import ABC, abstractmethod
 
 import torch 
 import torch.optim as opt
 
 from rlhf2.rlhf.evaluate import evaluate
-from rlhf2.rlhf.sft import SFTTrainer
+from rlhf2.rlhf.sft_trainer import SFTTrainer
 from rlhf2.utils.data_types import RLConfig
 from rlhf2.utils.visualize import grad_norm
 
 
-class AbstractRLHF:
+class RLHFTrainer(ABC):
+    """Abstract base for GRPO-family RL trainers.
+
+    Subclasses implement :meth:`calc_loss`; everything else (rollout generation,
+    data preparation, the SFT-then-RL training loop) is shared here.
+    """
 
     def __init__(self, config: RLConfig):
         self.config = config
@@ -73,8 +79,9 @@ class AbstractRLHF:
 
         return log_prob, entropy
         
+    @abstractmethod
     def calc_loss(self, log_prob, old_log_prob, infer_old_log_prob, response_mask, advantages):
-        raise NotImplementedError()
+        """Compute the policy-optimization loss for one update step."""
 
     @torch.no_grad()
     def generate(self, model, prompts: list[str], tokenizer, K: int = 1) -> list[list[str]]:

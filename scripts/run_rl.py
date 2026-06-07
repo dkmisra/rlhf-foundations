@@ -8,11 +8,11 @@ from omegaconf import OmegaConf
 from torch.utils.data import DataLoader, Dataset
 
 from rlhf2.llm.transformer import Transformer
-from rlhf2.rlhf.cispo import CISPO
-from rlhf2.rlhf.grpo import GRPO
-from rlhf2.rlhf.gspo import GSPO
-from rlhf2.rlhf.icepop import IcePop
-from rlhf2.rlhf.tis import TIS
+from rlhf2.rlhf.cispo_trainer import CISPOTrainer
+from rlhf2.rlhf.grpo_trainer import GRPOTrainer
+from rlhf2.rlhf.gspo_trainer import GSPOTrainer
+from rlhf2.rlhf.icepop_trainer import IcePopTrainer
+from rlhf2.rlhf.tis_trainer import TISTrainer
 from rlhf2.tasks.abstract import AbstractTask, AbstractTokenizer
 from rlhf2.tasks.block import Block
 from rlhf2.tasks.dyck import Dyck
@@ -23,11 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 ALGORITHMS = {
-    "grpo": GRPO,
-    "gspo": GSPO,
-    "cispo": CISPO,
-    "tis": TIS,
-    "icepop": IcePop,
+    "grpo": GRPOTrainer,
+    "gspo": GSPOTrainer,
+    "cispo": CISPOTrainer,
+    "tis": TISTrainer,
+    "icepop": IcePopTrainer,
 }
 
 

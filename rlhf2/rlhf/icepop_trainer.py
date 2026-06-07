@@ -1,10 +1,14 @@
 import torch
 
-from rlhf2.rlhf.grpo import GRPO
+from rlhf2.rlhf.grpo_trainer import GRPOTrainer
 from rlhf2.utils.data_types import RLConfig
 
 
-class TIS(GRPO):
+class IcePopTrainer(GRPOTrainer):
+    """IcePop trainer.
+
+    Reference (blog): https://ringtech.notion.site/icepop
+    """
 
     def __init__(self, config: RLConfig):
         super().__init__(config)
@@ -15,7 +19,8 @@ class TIS(GRPO):
         clipped_term = torch.clamp(ratio, min=1 - self.config.eps_low, max=1 + self.config.eps_high) * advantages.unsqueeze(1)
 
         imp_samp = torch.exp(old_log_prob - infer_old_log_prob).detach()    # (batch * K) x max_seq - 1
-        imp_samp = imp_samp.clamp(max=self.config.C)                 # (batch * K) x max_seq - 1
+        imp_samp_mask = (imp_samp < self.config.icepop_a) | (self.config.icepop_b < imp_samp)
+        imp_samp = imp_samp.masked_fill(imp_samp_mask, 0.0)                 # (batch * K) x max_seq - 1
 
         loss = - imp_samp * torch.minimum(ratio * advantages.unsqueeze(1), clipped_term)   # (batch * K) x max_seq - 1
         loss = loss * response_mask                    # (batch * K) x max_seq - 1

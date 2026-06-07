@@ -1,10 +1,14 @@
 import torch
 
-from rlhf2.rlhf.grpo import GRPO
+from rlhf2.rlhf.grpo_trainer import GRPOTrainer
 from rlhf2.utils.data_types import RLConfig
 
 
-class GSPO(GRPO):
+class GSPOTrainer(GRPOTrainer):
+    """Group Sequence Policy Optimization (GSPO).
+
+    Reference: https://arxiv.org/pdf/2507.18071
+    """
 
     def __init__(self, config: RLConfig):
         super().__init__(config)

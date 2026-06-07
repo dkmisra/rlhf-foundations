@@ -1,10 +1,14 @@
 import torch
 
-from rlhf2.rlhf.grpo import GRPO
+from rlhf2.rlhf.rlhf_trainer import RLHFTrainer
 from rlhf2.utils.data_types import RLConfig
 
 
-class IcePop(GRPO):
+class GRPOTrainer(RLHFTrainer):
+    """Group Relative Policy Optimization (GRPO).
+
+    Reference: https://arxiv.org/pdf/2402.03300
+    """
 
     def __init__(self, config: RLConfig):
         super().__init__(config)
@@ -14,11 +18,7 @@ class IcePop(GRPO):
         ratio = torch.exp(log_prob - old_log_prob)     # (batch * K) x max_seq - 1
         clipped_term = torch.clamp(ratio, min=1 - self.config.eps_low, max=1 + self.config.eps_high) * advantages.unsqueeze(1)
 
-        imp_samp = torch.exp(old_log_prob - infer_old_log_prob).detach()    # (batch * K) x max_seq - 1
-        imp_samp_mask = (imp_samp < self.config.icepop_a) | (self.config.icepop_b < imp_samp)
-        imp_samp = imp_samp.masked_fill(imp_samp_mask, 0.0)                 # (batch * K) x max_seq - 1
-
-        loss = - imp_samp * torch.minimum(ratio * advantages.unsqueeze(1), clipped_term)   # (batch * K) x max_seq - 1
+        loss = - torch.minimum(ratio * advantages.unsqueeze(1), clipped_term)   # (batch * K) x max_seq - 1
         loss = loss * response_mask                    # (batch * K) x max_seq - 1
         loss = loss.sum(1)                             # (batch * K)
 

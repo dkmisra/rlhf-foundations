@@ -1,10 +1,14 @@
 import torch
 
-from rlhf2.rlhf.grpo import GRPO
+from rlhf2.rlhf.grpo_trainer import GRPOTrainer
 from rlhf2.utils.data_types import RLConfig
 
 
-class CISPO(GRPO):
+class CISPOTrainer(GRPOTrainer):
+    """Clipped Importance Sampling Policy Optimization (CISPO).
+
+    Reference: https://arxiv.org/pdf/2506.13585
+    """
 
     def __init__(self, config: RLConfig):
         super().__init__(config)

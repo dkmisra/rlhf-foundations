@@ -60,15 +60,15 @@ More tasks maybe added in the future.
 
 ## RL algorithms
 
-| Algorithm | Module | Reference |
-|-----------|--------|-----------|
-| GRPO | `rlhf/grpo.py` | [Paper](https://arxiv.org/pdf/2402.03300) |
-| GSPO | `rlhf/gspo.py` | [Paper](https://arxiv.org/pdf/2507.18071) |
-| CISPO | `rlhf/cispo.py` | [Paper](https://arxiv.org/pdf/2506.13585) |
-| TIS | `rlhf/tis.py` | [Blog](https://fengyao.notion.site/off-policy-rl) |
-| IcePop | `rlhf/icepop.py` | [Blog](https://ringtech.notion.site/icepop) |
+| Algorithm | Trainer class | Module | Reference |
+|-----------|---------------|--------|-----------|
+| GRPO | `GRPOTrainer` | `rlhf/grpo_trainer.py` | [Paper](https://arxiv.org/pdf/2402.03300) |
+| GSPO | `GSPOTrainer` | `rlhf/gspo_trainer.py` | [Paper](https://arxiv.org/pdf/2507.18071) |
+| CISPO | `CISPOTrainer` | `rlhf/cispo_trainer.py` | [Paper](https://arxiv.org/pdf/2506.13585) |
+| TIS | `TISTrainer` | `rlhf/tis_trainer.py` | [Blog](https://fengyao.notion.site/off-policy-rl) |
+| IcePop | `IcePopTrainer` | `rlhf/icepop_trainer.py` | [Blog](https://ringtech.notion.site/icepop) |
 
-Shared training logic lives in `rlhf/abstract_rl.py`. DPO and reward modeling are in `rlhf/dpo.py` and `rlhf/reward_modeling.py` for preference-style experiments.
+Shared training logic lives in the `RLHFTrainer` abstract base class (`rlhf/rlhf_trainer.py`); each algorithm above subclasses it and implements `calc_loss`. SFT is handled by `SFTTrainer` (`rlhf/sft_trainer.py`). DPO and reward modeling are in `DPOTrainer` (`rlhf/dpo_trainer.py`) and `rlhf/reward_modeling.py` for preference-style experiments.
 
 Set the algorithm in config: `rl_config.algorithm: grpo` (also `gspo`, `cispo`, `tis`, `icepop`).
 
