@@ -28,27 +28,29 @@ llm_config:
   pos_embed_type: rope
   ffn_type: mlp  # set to moe and add moe: {num_experts, top_k} to use MixtureOfExpert
 
-rl_config:
-  algorithm: grpo
-  max_epochs: 20
-  lr: 0.001
-  weight_decay: 0.1
-  grad_clip: 1.0
-  K: 4
-  eps_high: 0.28
-  eps_low: 0.2
-  kl: 0.0
-  num_updates: 1
-  eval_every: 20
-  adv_normalize: false
-  length_normalize: false
-  inference:
-    max_tokens: 16
-    temp: 1.0
-  sft:
-    enabled: true
+stages:
+  - trainer: sft
     max_epochs: 3
     lr: 0.001
     weight_decay: 0.1
     grad_clip: 1.0
     eval_every: 20
+    inference:
+      max_tokens: 16
+      temp: 1.0
+  - trainer: grpo
+    max_epochs: 20
+    lr: 0.001
+    weight_decay: 0.1
+    grad_clip: 1.0
+    K: 4
+    eps_high: 0.28
+    eps_low: 0.2
+    kl: 0.0
+    num_updates: 1
+    eval_every: 20
+    adv_normalize: false
+    length_normalize: false
+    inference:
+      max_tokens: 16
+      temp: 1.0

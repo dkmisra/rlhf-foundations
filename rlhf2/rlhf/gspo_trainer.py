@@ -1,7 +1,7 @@
 import torch
 
 from rlhf2.rlhf.grpo_trainer import GRPOTrainer
-from rlhf2.utils.data_types import RLConfig
+from rlhf2.utils.data_types import RLStageConfig
 
 
 class GSPOTrainer(GRPOTrainer):
@@ -10,7 +10,7 @@ class GSPOTrainer(GRPOTrainer):
     Reference: https://arxiv.org/pdf/2507.18071
     """
 
-    def __init__(self, config: RLConfig):
+    def __init__(self, config: RLStageConfig):
         super().__init__(config)
 
     def calc_loss(self, log_prob, old_log_prob, infer_old_log_prob, response_mask, advantages):

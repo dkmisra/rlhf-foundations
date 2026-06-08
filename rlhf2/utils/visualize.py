@@ -30,26 +30,26 @@ MUTED_COLOR = "#64748b"
 GRID_COLOR = "#e2e8f0"
 BORDER_COLOR = "#e2e8f0"
 
-# (graph_id, [(series_key, legend_label, color), ...], chart_title)
-METRIC_CHARTS: list[tuple[str, list[tuple[str, str, str]], str]] = [
-    ("chart-sft-loss", [("sft/loss", "SFT loss", "#2563eb")], "SFT loss"),
-    ("chart-rl-total-loss", [("rl/total_loss", "RL total loss", "#db2777")], "RL total loss"),
-    # Keep dom id chart-rl-grpo-loss stable (browser/callback ids); series key is rl/rlhf_loss.
-    ("chart-rl-grpo-loss", [("rl/rlhf_loss", "RL RLHF loss", "#e11d48")], "RL RLHF loss"),
-    ("chart-rl-kl-loss", [("rl/kl_loss", "RL KL loss", "#f472b6")], "RL KL loss"),
-    ("chart-sft-grad", [("sft/grad_norm", "SFT grad norm", "#3b82f6")], "SFT gradient norm"),
-    ("chart-rl-grad", [("rl/grad_norm", "RL grad norm", "#10b981")], "RL gradient norm"),
-    ("chart-rl-reward", [("rl/mean_reward", "Train reward", "#059669")], "RL mean reward (train)"),
-    ("chart-rl-entropy", [("rl/avg_entropy", "Entropy", "#7c3aed")], "RL avg entropy (response)"),
-    ("chart-sft-eval", [("sft/eval_reward", "Eval reward", "#0284c7")], "SFT eval reward"),
-    (
-        "chart-sft-eval-nll",
-        [("sft/eval_teacher_nll", "Teacher NLL", "#6366f1")],
-        "SFT eval teacher NLL",
-    ),
-    ("chart-rl-eval", [("rl/eval_reward", "Eval reward", "#0d9488")], "RL eval reward"),
-]
-CHART_IDS = [spec[0] for spec in METRIC_CHARTS]
+# Per stage-kind chart catalog: each entry is (metric_key, color, chart_title).
+# Charts are created statically per stage, so the Dash layout/callback outputs are
+# fixed up front (no flashing) even though the number of stages is config-driven.
+METRIC_SPECS: dict[str, list[tuple[str, str, str]]] = {
+    "sft": [
+        ("loss", "#2563eb", "Loss"),
+        ("grad_norm", "#3b82f6", "Gradient norm"),
+        ("eval_reward", "#0284c7", "Eval reward"),
+        ("eval_teacher_nll", "#6366f1", "Eval teacher NLL"),
+    ],
+    "rl": [
+        ("total_loss", "#db2777", "Total loss"),
+        ("rlhf_loss", "#e11d48", "RLHF loss"),
+        ("kl_loss", "#f472b6", "KL loss"),
+        ("grad_norm", "#10b981", "Gradient norm"),
+        ("mean_reward", "#059669", "Mean reward (train)"),
+        ("eval_reward", "#0d9488", "Eval reward"),
+        ("entropy", "#7c3aed", "Avg entropy (response)"),
+    ],
+}
 
 
 @dataclass
@@ -73,17 +73,24 @@ def grad_norm(model: torch.nn.Module) -> float:
 class TrainingVisualizer:
     """Thread-safe logger + Dash server for live RL/SFT monitoring."""
 
-    def __init__(self, config: VisualizeConfig):
+    def __init__(self, config: VisualizeConfig, stages: list[tuple[str, str]]):
+        """:param stages: ordered ``(display_name, kind)`` pairs, kind in {"sft", "rl"}."""
         self.config = config
+        self.stages = stages
         self._lock = threading.Lock()
+        # Series keyed by f"{stage_idx}/{metric}"; generations bucketed per stage.
         self._series: dict[str, list[tuple[int, float]]] = {}
-        self._generations: list[GenerationSample] = []
-        self._step_counter = {"sft": 0, "rl": 0}
+        self._generations: dict[int, list[GenerationSample]] = {i: [] for i in range(len(stages))}
+        self._current_stage = 0
         self._server_thread: threading.Thread | None = None
         self._started = False
 
         if self.config.enabled:
             self._start_dashboard()
+
+    def begin_stage(self, stage_idx: int) -> None:
+        """Mark the active stage; subsequent metric/generation logs route to it."""
+        self._current_stage = stage_idx
 
     def _start_dashboard(self) -> None:
         if self._started:
@@ -125,56 +132,19 @@ class TrainingVisualizer:
         except KeyboardInterrupt:
             print("Shutting down dashboard.")
 
-    def log_scalar(self, name: str, value: float, step: int) -> None:
+    def log_metrics(self, step: int, metrics: dict[str, float], *, throttle: bool = True) -> None:
+        """Log a set of named scalars for the current stage at ``step``.
+
+        ``throttle`` honors ``log_every`` for high-frequency training metrics;
+        eval metrics pass ``throttle=False`` so they are always recorded.
+        """
         if not self.config.enabled:
+            return
+        if throttle and step % self.config.log_every != 0:
             return
         with self._lock:
-            self._series.setdefault(name, []).append((step, float(value)))
-
-    def log_sft_step(
-        self,
-        loss: float,
-        grad_norm_value: float,
-        *,
-        step: int | None = None,
-    ) -> None:
-        if not self.config.enabled:
-            return
-        step = step if step is not None else self._next_step("sft")
-        if step % self.config.log_every != 0:
-            return
-        self.log_scalar("sft/loss", loss, step)
-        self.log_scalar("sft/grad_norm", grad_norm_value, step)
-
-    def log_rl_step(
-        self,
-        *,
-        step: int | None = None,
-        total_loss: float,
-        rlhf_loss: float,
-        kl_loss: float,
-        mean_reward: float,
-        grad_norm_value: float,
-        avg_entropy: float | None = None,
-    ) -> None:
-        if not self.config.enabled:
-            return
-        step = step if step is not None else self._next_step("rl")
-        if step % self.config.log_every != 0:
-            return
-        self.log_scalar("rl/total_loss", total_loss, step)
-        self.log_scalar("rl/rlhf_loss", rlhf_loss, step)
-        self.log_scalar("rl/kl_loss", kl_loss, step)
-        self.log_scalar("rl/mean_reward", mean_reward, step)
-        self.log_scalar("rl/grad_norm", grad_norm_value, step)
-        if avg_entropy is not None:
-            self.log_scalar("rl/avg_entropy", avg_entropy, step)
-
-    def log_eval_reward(self, reward: float, phase: str, step: int) -> None:
-        self.log_scalar(f"{phase}/eval_reward", reward, step)
-
-    def log_eval_teacher_nll(self, nll: float, step: int) -> None:
-        self.log_scalar("sft/eval_teacher_nll", nll, step)
+            for name, value in metrics.items():
+                self._series.setdefault(f"{self._current_stage}/{name}", []).append((step, float(value)))
 
     def log_generations(
         self,
@@ -195,10 +165,11 @@ class TrainingVisualizer:
 
         targets = targets or [None] * len(prompts)
         with self._lock:
+            bucket = self._generations.setdefault(self._current_stage, [])
             for prompt, completion, reward, target in zip(
                 prompts, completions, rewards, targets
             ):
-                self._generations.append(
+                bucket.append(
                     GenerationSample(
                         step=step,
                         phase=phase,
@@ -208,9 +179,9 @@ class TrainingVisualizer:
                         target=target,
                     )
                 )
-            excess = len(self._generations) - self.config.max_generation_samples
+            excess = len(bucket) - self.config.max_generation_samples
             if excess > 0:
-                self._generations = self._generations[excess:]
+                del bucket[:excess]
 
     def log_rollout_batch(
         self,
@@ -246,15 +217,10 @@ class TrainingVisualizer:
             targets=flat_targets,
         )
 
-    def _next_step(self, phase: str) -> int:
-        with self._lock:
-            self._step_counter[phase] += 1
-            return self._step_counter[phase]
-
-    def snapshot(self) -> tuple[dict[str, list[tuple[int, float]]], list[GenerationSample]]:
+    def snapshot(self) -> tuple[dict[str, list[tuple[int, float]]], dict[int, list[GenerationSample]]]:
         with self._lock:
             series = {k: list(v) for k, v in self._series.items()}
-            generations = list(self._generations)
+            generations = {i: list(v) for i, v in self._generations.items()}
         return series, generations
 
     def _run_dash(self) -> None:
@@ -262,8 +228,12 @@ class TrainingVisualizer:
         # /_dash-update-component); silence everything below errors.
         logging.getLogger("werkzeug").setLevel(logging.ERROR)
 
-        metric_charts = list(METRIC_CHARTS)
-        chart_ids = [chart_id for chart_id, _, _ in metric_charts]
+        # Flat list of every chart across all stages: (stage_idx, key, color, title, dom_id).
+        chart_specs = [
+            (idx, key, color, title, f"chart-{idx}-{key}")
+            for idx, (_, kind) in enumerate(self.stages)
+            for key, color, title in METRIC_SPECS[kind]
+        ]
 
         app = Dash(__name__, suppress_callback_exceptions=True)
         app.title = "RLHF Training Monitor"
@@ -297,7 +267,7 @@ class TrainingVisualizer:
                                     },
                                 ),
                                 html.P(
-                                    "Live metrics (one chart per series) and sampled generations.",
+                                    "Live metrics and sampled generations, grouped by training stage.",
                                     style={"margin": "8px 0 0", "color": MUTED_COLOR},
                                 ),
                             ],
@@ -330,41 +300,31 @@ class TrainingVisualizer:
                     ],
                 ),
                 dcc.Interval(id="refresh", interval=1500, n_intervals=0),
-                html.Div(
-                    style={
-                        "display": "grid",
-                        "gridTemplateColumns": "repeat(2, minmax(320px, 1fr))",
-                        "gap": "16px",
-                        "marginBottom": "24px",
-                    },
-                    children=[
-                        dcc.Graph(id=chart_id, style={"height": "260px"})
-                        for chart_id in chart_ids
-                    ],
-                ),
-                html.H3("Recent generations", style={"marginTop": "8px"}),
-                self._build_generations_table(),
+                *[
+                    self._build_stage_section(idx, name, kind)
+                    for idx, (name, kind) in enumerate(self.stages)
+                ],
             ],
         )
 
-        # Single multi-output callback (Dash batches all chart outputs in one request).
-        # The table only updates its `data` (not the whole component) so pagination
-        # and other UI state survive each refresh.
-        chart_outputs = [Output(chart_id, "figure") for chart_id in chart_ids]
-        table_output = Output("generations-table", "data")
+        # Single multi-output callback (Dash batches all outputs in one request).
+        # Tables update only their `data` so pagination/sort state survives refreshes.
+        chart_outputs = [Output(spec[4], "figure") for spec in chart_specs]
+        table_outputs = [Output(f"gen-table-{idx}", "data") for idx in range(len(self.stages))]
 
         @app.callback(
-            chart_outputs + [table_output],
+            chart_outputs + table_outputs,
             [Input("refresh", "n_intervals"), Input("smoothing-slider", "value")],
             prevent_initial_call=False,
         )
         def _update_all(_n: int, smoothing: float | None):
             series, generations = self.snapshot()
             figures = [
-                self._build_line_chart(series, series_specs, title, smoothing or 0.0)
-                for _, series_specs, title in metric_charts
+                self._build_line_chart(series.get(f"{idx}/{key}", []), color, title, smoothing or 0.0)
+                for idx, key, color, title, _ in chart_specs
             ]
-            return figures + [self._generation_rows(generations)]
+            tables = [self._generation_rows(generations.get(idx, [])) for idx in range(len(self.stages))]
+            return figures + tables
 
         app.run(
             host=self.config.host,
@@ -393,18 +353,13 @@ class TrainingVisualizer:
 
     def _build_line_chart(
         self,
-        series: dict[str, list[tuple[int, float]]],
-        series_specs: list[tuple[str, str, str]],
+        points: list[tuple[int, float]],
+        color: str,
         title: str,
         smoothing: float = 0.0,
     ) -> go.Figure:
         fig = go.Figure()
-        has_data = False
-        for key, label, color in series_specs:
-            points = series.get(key, [])
-            if not points:
-                continue
-            has_data = True
+        if points:
             steps, values = zip(*points)
             if smoothing > 0:
                 fig.add_trace(
@@ -412,7 +367,7 @@ class TrainingVisualizer:
                         x=steps,
                         y=values,
                         mode="lines",
-                        name=label,
+                        name=title,
                         line=dict(color=f"rgba({self._hex_to_rgb(color)}, 0.25)", width=1),
                         showlegend=False,
                         hoverinfo="skip",
@@ -423,7 +378,7 @@ class TrainingVisualizer:
                         x=steps,
                         y=self._smooth(values, smoothing),
                         mode="lines",
-                        name=label,
+                        name=title,
                         line=dict(color=color, width=2),
                     )
                 )
@@ -433,12 +388,12 @@ class TrainingVisualizer:
                         x=steps,
                         y=values,
                         mode="lines+markers",
-                        name=label,
+                        name=title,
                         line=dict(color=color, width=2),
                         marker=dict(size=5, color=color),
                     )
                 )
-        if not has_data:
+        else:
             fig.add_annotation(
                 text="Waiting for data…",
                 xref="paper",
@@ -456,7 +411,7 @@ class TrainingVisualizer:
             plot_bgcolor=PLOT_BG,
             font=dict(color=TEXT_COLOR, size=12),
             margin=dict(l=48, r=16, t=40, b=40),
-            showlegend=len(series_specs) > 1,
+            showlegend=False,
             hovermode="x unified",
             # Preserve zoom/pan (and avoid the visible flash) across refreshes.
             uirevision=title,
@@ -464,6 +419,43 @@ class TrainingVisualizer:
         fig.update_xaxes(title_text="step", gridcolor=GRID_COLOR, linecolor=BORDER_COLOR)
         fig.update_yaxes(gridcolor=GRID_COLOR, linecolor=BORDER_COLOR)
         return fig
+
+    def _build_stage_section(self, stage_idx: int, name: str, kind: str) -> Any:
+        """A titled block of charts plus a generations table for one stage."""
+        charts = [
+            dcc.Graph(id=f"chart-{stage_idx}-{key}", style={"height": "260px"})
+            for key, _, _ in METRIC_SPECS[kind]
+        ]
+        return html.Div(
+            style={
+                "border": f"1px solid {BORDER_COLOR}",
+                "borderRadius": "12px",
+                "backgroundColor": PLOT_BG,
+                "padding": "16px",
+                "marginBottom": "24px",
+            },
+            children=[
+                html.H2(
+                    f"Stage {stage_idx + 1}: {name}",
+                    style={"margin": "0 0 4px", "fontWeight": 700, "letterSpacing": "-0.01em"},
+                ),
+                html.P(
+                    f"{kind.upper()} stage",
+                    style={"margin": "0 0 16px", "color": MUTED_COLOR, "fontSize": "13px"},
+                ),
+                html.Div(
+                    style={
+                        "display": "grid",
+                        "gridTemplateColumns": "repeat(2, minmax(320px, 1fr))",
+                        "gap": "16px",
+                        "marginBottom": "16px",
+                    },
+                    children=charts,
+                ),
+                html.H3("Recent generations", style={"margin": "8px 0"}),
+                self._build_generations_table(stage_idx),
+            ],
+        )
 
     @staticmethod
     def _hex_to_rgb(hex_color: str) -> str:
@@ -485,11 +477,11 @@ class TrainingVisualizer:
             for g in reversed(generations)
         ]
 
-    def _build_generations_table(self) -> Any:
+    def _build_generations_table(self, stage_idx: int) -> Any:
         """Static DataTable created once in the layout; rows are updated in-place
         via the refresh callback so paging/sort state is preserved."""
         return dash_table.DataTable(
-            id="generations-table",
+            id=f"gen-table-{stage_idx}",
             data=[],
             columns=[
                 {"name": "Step", "id": "step"},
@@ -528,7 +520,10 @@ class TrainingVisualizer:
         )
 
 
-def create_visualizer(config: VisualizeConfig | None) -> TrainingVisualizer | None:
+def create_visualizer(
+    config: VisualizeConfig | None,
+    stages: list[tuple[str, str]],
+) -> TrainingVisualizer | None:
     if config is None or not config.enabled:
         return None
-    return TrainingVisualizer(config)
+    return TrainingVisualizer(config, stages)

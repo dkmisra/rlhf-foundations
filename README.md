@@ -18,16 +18,16 @@ uv run scripts/run_rl.py --config configs/dyck_grpo.yaml
 
 `uv run` automatically creates a virtual environment and installs the dependencies (declared in `pyproject.toml`) on first use, so there is no separate install step.
 
-The training script loads YAML config, applies optional CLI overrides (OmegaConf dot paths), runs supervised fine-tuning (SFT) when enabled, and then RL. With visualization enabled, a live dashboard opens in your browser at `http://127.0.0.1:8050`. It will open a window and results will start filling in as shown:
+The training script loads YAML config, applies optional CLI overrides (OmegaConf dot paths), then runs the configured training `stages` in order (typically an SFT stage followed by an RL stage). With visualization enabled, a live dashboard opens in your browser at `http://127.0.0.1:8050`. It will open a window and results will start filling in as shown:
 
 ![visualization of results](img/visual.png)
 
-Override any field from the command line:
+Override any field from the command line (stages are indexed, so the RL stage in the sample configs is `stages.1`):
 
 ```bash
 uv run scripts/run_rl.py --config configs/dyck_grpo.yaml \
-  rl_config.algorithm=gspo \
-  rl_config.max_epochs=5 \
+  stages.1.trainer=gspo \
+  stages.1.max_epochs=5 \
   data_config.train_size=32 \
   visualize.enabled=false
 ```
@@ -46,9 +46,9 @@ pyproject.toml   # Project metadata and dependencies (managed with uv)
 ```
 
 1. **Data** — Sample unique prompts from the task, split into train/val (`scripts/run_rl.py`).
-2. **SFT** (optional) — SFT is performed prior to RL by default.
+2. **Stages** — Run the configured `stages` in order on a shared model. The sample configs use an SFT stage then a GRPO stage, but you can list any number of stages and pick the trainer per stage.
 3. **RL** — Batched rollout, reward, and policy update (GRPO-family objectives).
-4. **Monitoring** — Losses, gradient norms, rewards, and sample generations in the Dash UI.
+4. **Monitoring** — Losses, gradient norms, rewards, and sample generations in the Dash UI (one section per stage).
 
 Two sample tasks are provided. These tasks are chosen to be only slightly hard so they can be trained in 10-20min on a Macbook.
 
@@ -68,9 +68,18 @@ More tasks maybe added in the future.
 | TIS | `TISTrainer` | `rlhf/tis_trainer.py` | [Blog](https://fengyao.notion.site/off-policy-rl) |
 | IcePop | `IcePopTrainer` | `rlhf/icepop_trainer.py` | [Blog](https://ringtech.notion.site/icepop) |
 
-Shared training logic (rollout generation, data preparation, the SFT-then-RL loop) lives in `GRPOTrainer` (`rlhf/grpo_trainer.py`); the other algorithms above subclass it and override `calc_loss`. SFT is handled by `SFTTrainer` (`rlhf/sft_trainer.py`). DPO and reward modeling are in `DPOTrainer` (`rlhf/dpo_trainer.py`) and `rlhf/reward_modeling.py` for preference-style experiments.
+Shared rollout/generation utilities live in `rlhf/inference.py` (`batch_generate`, `batch_generate_with_rewards`) so any stage can sample completions. The RL training loop and GRPO objective live in `GRPOTrainer` (`rlhf/grpo_trainer.py`); the other algorithms above subclass it and override `calc_loss`. SFT is handled by `SFTTrainer` (`rlhf/sft_trainer.py`). DPO and reward modeling are in `DPOTrainer` (`rlhf/dpo_trainer.py`) and `rlhf/reward_modeling.py` for preference-style experiments.
 
-Set the algorithm in config: `rl_config.algorithm: grpo` (also `gspo`, `cispo`, `tis`, `icepop`).
+Training is configured as an ordered list of `stages`, each selecting a `trainer`. For example, an `sft` stage followed by a `grpo` stage (also `gspo`, `cispo`, `tis`, `icepop`):
+
+```yaml
+stages:
+  - trainer: sft
+    max_epochs: 3
+  - trainer: grpo
+    max_epochs: 20
+    K: 4
+```
 
 ## LLM Implementation
 
@@ -84,7 +93,7 @@ Top-level config sections (see `utils/data_types.py`):
 |---------|---------|
 | `data_config` | Dataset sizes, batching, and domain specific hyperparameters |
 | `llm_config` | Transformer shape (layers, dim, heads, `max_seq`) |
-| `rl_config` | Algorithm, optimization, `K`, clipping, KL, `inference`, `sft` |
+| `stages` | Ordered training stages; each picks a `trainer` (`sft`, `grpo`, `gspo`, `cispo`, `tis`, `icepop`) with its own hyperparameters and `inference` settings |
 | `visualize` | Live dashboard (port, logging frequency, generations table) |
 | `device` | e.g. `cpu` or `cuda` |
 
@@ -92,7 +101,7 @@ OmegaConf is used to load configurations from yaml and command line, and pydanti
 
 ## Visualization
 
-`utils/visualize.py` runs a Plotly Dash app that tracks SFT/RL losses, GRPO/KL breakdown, gradient norms, train/eval rewards, and recent prompt/completion samples. Disable with `visualize.enabled: false` if you do not need it.
+`utils/visualize.py` runs a Plotly Dash app with one section per training stage, tracking that stage's losses, gradient norms, train/eval rewards (plus KL/entropy for RL and teacher NLL for SFT), and recent prompt/completion samples. Disable with `visualize.enabled: false` if you do not need it.
 
 ## Dependencies
 

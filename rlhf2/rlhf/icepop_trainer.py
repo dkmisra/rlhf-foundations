@@ -1,7 +1,7 @@
 import torch
 
 from rlhf2.rlhf.grpo_trainer import GRPOTrainer
-from rlhf2.utils.data_types import RLConfig
+from rlhf2.utils.data_types import RLStageConfig
 
 
 class IcePopTrainer(GRPOTrainer):
@@ -10,8 +10,11 @@ class IcePopTrainer(GRPOTrainer):
     Reference (blog): https://ringtech.notion.site/icepop
     """
 
-    def __init__(self, config: RLConfig):
+    def __init__(self, config: RLStageConfig):
         super().__init__(config)
+
+    def needs_infer_log_prob(self) -> bool:
+        return True
 
     def calc_loss(self, log_prob, old_log_prob, infer_old_log_prob, response_mask, advantages):
 
