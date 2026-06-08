@@ -1,12 +1,16 @@
 import torch
 
-from rlhf.grpo import GRPO
-from utils.data_types import RLConfig
+from rlhf2.rlhf.grpo_trainer import GRPOTrainer
+from rlhf2.utils.data_types import RLStageConfig
 
 
-class GSPO(GRPO):
+class GSPOTrainer(GRPOTrainer):
+    """Group Sequence Policy Optimization (GSPO).
 
-    def __init__(self, config: RLConfig):
+    Reference: https://arxiv.org/pdf/2507.18071
+    """
+
+    def __init__(self, config: RLStageConfig):
         super().__init__(config)
 
     def calc_loss(self, log_prob, old_log_prob, infer_old_log_prob, response_mask, advantages):

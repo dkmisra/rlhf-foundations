@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from tasks.block import Block, BlockTokenizer
+from rlhf2.tasks.block import Block, BlockTokenizer
 
 
 @pytest.mark.parametrize(
@@ -46,7 +46,7 @@ def test_prompt_token_prefix_is_stable_under_concatenation():
 def test_get_task_target_completion_is_the_mirror():
     task = Block(rng=random.Random(0))
     for _ in range(20):
-        item = task.get_task()
+        item = task.generate_sample()
         expected = " ".join(Block.mirror(item["prompt"]))
         assert item["target_completion"] == expected
 

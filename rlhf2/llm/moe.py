@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from llm.experts import MLP
+from rlhf2.llm.experts import MLP
 
 
 class MixtureOfExpert(nn.Module):

@@ -1,4 +1,4 @@
-from tasks.dyck import DyckTokenizer
+from rlhf2.tasks.dyck import DyckTokenizer
 
 
 def test_tokenize_decode_round_trip():

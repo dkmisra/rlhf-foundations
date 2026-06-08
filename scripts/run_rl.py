@@ -1,35 +1,36 @@
 import argparse
 import random
 import re
-import sys
 from pathlib import Path
 
 import torch
+import yaml
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader, Dataset
 
+from rlhf2.llm.transformer import Transformer
+from rlhf2.rlhf.cispo_trainer import CISPOTrainer
+from rlhf2.rlhf.grpo_trainer import GRPOTrainer
+from rlhf2.rlhf.gspo_trainer import GSPOTrainer
+from rlhf2.rlhf.icepop_trainer import IcePopTrainer
+from rlhf2.rlhf.sft_trainer import SFTTrainer
+from rlhf2.rlhf.tis_trainer import TISTrainer
+from rlhf2.tasks.abstract import AbstractTask, AbstractTokenizer
+from rlhf2.tasks.block import Block
+from rlhf2.tasks.dyck import Dyck
+from rlhf2.utils.data_types import Config, DataConfig
+from rlhf2.utils.visualize import create_visualizer
+
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "rlhf2"))
-
-from llm.transformer import Transformer
-from rlhf.cispo import CISPO
-from rlhf.grpo import GRPO
-from rlhf.gspo import GSPO
-from rlhf.icepop import IcePop
-from rlhf.tis import TIS
-from tasks.abstract import AbstractTask, AbstractTokenizer
-from tasks.block import Block
-from tasks.dyck import Dyck
-from utils.data_types import Config, DataConfig
-from utils.visualize import create_visualizer
 
 
-ALGORITHMS = {
-    "grpo": GRPO,
-    "gspo": GSPO,
-    "cispo": CISPO,
-    "tis": TIS,
-    "icepop": IcePop,
+TRAINERS = {
+    "sft": SFTTrainer,
+    "grpo": GRPOTrainer,
+    "gspo": GSPOTrainer,
+    "cispo": CISPOTrainer,
+    "tis": TISTrainer,
+    "icepop": IcePopTrainer,
 }
 
 
@@ -72,7 +73,7 @@ def collect_unique_prompts(
     attempts = 0
 
     while len(prompt_to_item) < num_unique and attempts < max_attempts:
-        item = task.get_task()
+        item = task.generate_sample()
         attempts += 1
         prompt = item["prompt"]
         if prompt not in prompt_to_item:
@@ -163,7 +164,7 @@ def normalize_override_tokens(tokens: list[str]) -> list[str]:
         if "=" not in token:
             raise ValueError(
                 f"Invalid override {token!r}; expected dot.path=value "
-                "(e.g. rl_config.max_epochs=5 or --rl_config.max_epochs=5)"
+                "(e.g. stages.1.max_epochs=5 or --stages.1.max_epochs=5)"
             )
         parts = (
             _OVERRIDE_BUNDLE_RE.split(token)
@@ -186,7 +187,11 @@ def load_config(config_path: Path, overrides: list[str]) -> Config:
     overrides = normalize_override_tokens(overrides)
     if overrides:
         print(f"Applying CLI overrides: {', '.join(overrides)}")
-        yaml_cfg = OmegaConf.merge(yaml_cfg, OmegaConf.from_dotlist(overrides))
+        # Apply individually so dot paths with list indices (e.g. stages.1.lr) work;
+        # OmegaConf.from_dotlist would treat the index as a dict key and fail to merge.
+        for override in overrides:
+            key, _, raw_value = override.partition("=")
+            OmegaConf.update(yaml_cfg, key, yaml.safe_load(raw_value), merge=True)
     return Config.model_validate(OmegaConf.to_container(yaml_cfg, resolve=True))
 
 
@@ -215,9 +220,28 @@ def build_model(llm_config, tokenizer: AbstractTokenizer, device: str) -> Transf
     return model.to(device)
 
 
-def build_trainer(rl_config):
-    algorithm_cls = ALGORITHMS[rl_config.algorithm]
-    return algorithm_cls(rl_config)
+def build_trainer(stage):
+    return TRAINERS[stage.trainer](stage)
+
+
+def resolve_stage_names(stages) -> list[str]:
+    """Display names for stages, defaulting to the trainer id with a suffix on collisions."""
+    counts: dict[str, int] = {}
+    for stage in stages:
+        counts[stage.trainer] = counts.get(stage.trainer, 0) + 1
+
+    seen: dict[str, int] = {}
+    names: list[str] = []
+    for stage in stages:
+        if stage.name:
+            names.append(stage.name)
+            continue
+        seen[stage.trainer] = seen.get(stage.trainer, 0) + 1
+        if counts[stage.trainer] > 1:
+            names.append(f"{stage.trainer} {seen[stage.trainer]}")
+        else:
+            names.append(stage.trainer)
+    return names
 
 
 def make_reward_fn(task):
@@ -249,17 +273,29 @@ def run_experiment(config: Config) -> None:
 
     tokenizer = get_task_tokenizer(task)
     model = build_model(config.llm_config, tokenizer, device)
-    trainer = build_trainer(config.rl_config)
-    visualizer = create_visualizer(config.visualize)
 
-    print(f"Launching {config.rl_config.algorithm} on {config.data_config.domain} (vocab_size={tokenizer.vocab_size})")
+    stage_names = resolve_stage_names(config.stages)
+    stage_kinds = [("sft" if stage.trainer == "sft" else "rl") for stage in config.stages]
+    visualizer = create_visualizer(config.visualize, list(zip(stage_names, stage_kinds)))
+
+    pipeline = " -> ".join(f"{name} ({stage.trainer})" for name, stage in zip(stage_names, config.stages))
+    print(f"Launching pipeline [{pipeline}] on {config.data_config.domain} (vocab_size={tokenizer.vocab_size})")
     if visualizer is not None:
         print(f"Dashboard: http://{config.visualize.host}:{config.visualize.port}")
     print(
         f"Unique prompts: train={len(train_items)}, val={len(val_items)} "
         f"(target {config.data_config.train_size}/{config.data_config.val_size})"
     )
-    trainer.train(model, train_loader, eval_loader, tokenizer, reward_fn, visualizer)
+
+    for stage_idx, (stage, name) in enumerate(zip(config.stages, stage_names)):
+        print(f"=== Stage {stage_idx + 1}/{len(config.stages)}: {name} ({stage.trainer}) ===")
+        if visualizer is not None:
+            visualizer.begin_stage(stage_idx)
+        trainer = build_trainer(stage)
+        trainer.train(model, train_loader, eval_loader, tokenizer, reward_fn, visualizer)
+
+    if visualizer is not None:
+        visualizer.block_until_exit()
 
 
 def parse_args():
@@ -281,7 +317,7 @@ def parse_args():
     parser.add_argument(
         "overrides",
         nargs="*",
-        help="Additional dot.path=value overrides, e.g. rl_config.lr=0.001 data_config.seed=1",
+        help="Additional dot.path=value overrides, e.g. stages.1.lr=0.001 data_config.seed=1",
     )
     args, unknown = parser.parse_known_args()
 

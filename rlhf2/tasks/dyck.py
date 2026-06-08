@@ -1,6 +1,6 @@
 import random
 
-from .abstract import AbstractTokenizer, AbstractTask
+from rlhf2.tasks.abstract import AbstractTokenizer, AbstractTask
 
 _OPEN = "([{"
 _CLOSE = ")]}"
@@ -73,7 +73,7 @@ class Dyck(AbstractTask):
         self.prompt_length_min = lo
         self.prompt_length_max = hi
 
-    def get_task(self) -> dict:
+    def generate_sample(self) -> dict:
         """Sample a prompt and return metadata for balancing brackets."""
         for _ in range(100):
             length = self.rng.randint(self.prompt_length_min, self.prompt_length_max)

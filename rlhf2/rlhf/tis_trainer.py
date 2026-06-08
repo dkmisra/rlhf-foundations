@@ -1,13 +1,20 @@
 import torch
 
-from rlhf.grpo import GRPO
-from utils.data_types import RLConfig
+from rlhf2.rlhf.grpo_trainer import GRPOTrainer
+from rlhf2.utils.data_types import RLStageConfig
 
 
-class TIS(GRPO):
+class TISTrainer(GRPOTrainer):
+    """Truncated Importance Sampling (TIS).
 
-    def __init__(self, config: RLConfig):
+    Reference (blog): https://fengyao.notion.site/off-policy-rl
+    """
+
+    def __init__(self, config: RLStageConfig):
         super().__init__(config)
+
+    def needs_infer_log_prob(self) -> bool:
+        return True
 
     def calc_loss(self, log_prob, old_log_prob, infer_old_log_prob, response_mask, advantages):
 

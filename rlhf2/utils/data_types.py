@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -10,15 +10,19 @@ class InferenceConfig(BaseModel):
     temp: float = Field(default=1.0, description="Softmax temperature for sampling")
 
 
-class SFTConfig(BaseModel):
-    """Supervised fine-tuning stage run before RL."""
+class SFTStageConfig(BaseModel):
+    """Supervised fine-tuning training stage."""
 
-    enabled: bool = True
+    trainer: Literal["sft"] = "sft"
+    name: str | None = Field(default=None, description="Display name for the dashboard; defaults to the trainer id")
+
     max_epochs: int = 3
     lr: float = 1e-3
     weight_decay: float = 0.1
     grad_clip: float = 1.0
     eval_every: int = Field(default=20, description="Run eval every N SFT steps; 0 disables")
+
+    inference: InferenceConfig = Field(default_factory=InferenceConfig)
 
 
 class VisualizeConfig(BaseModel):
@@ -39,8 +43,11 @@ class VisualizeConfig(BaseModel):
     )
 
 
-class RLConfig(BaseModel):
-    algorithm: Literal["grpo", "gspo", "cispo", "tis", "icepop"] = "grpo"
+class RLStageConfig(BaseModel):
+    """A reinforcement-learning training stage (GRPO and its variants)."""
+
+    trainer: Literal["grpo", "gspo", "cispo", "tis", "icepop"] = "grpo"
+    name: str | None = Field(default=None, description="Display name for the dashboard; defaults to the trainer id")
 
     # Optimization
     max_epochs: int = 10
@@ -61,7 +68,6 @@ class RLConfig(BaseModel):
     length_normalize: bool = False
 
     inference: InferenceConfig = Field(default_factory=InferenceConfig)
-    sft: SFTConfig = Field(default_factory=SFTConfig)
 
     # TIS
     C: float = Field(default=2.0, description="Importance-sampling clip for TIS")
@@ -69,6 +75,9 @@ class RLConfig(BaseModel):
     # IcePop
     icepop_a: float = 0.5
     icepop_b: float = 2.0
+
+
+Stage = Annotated[Union[SFTStageConfig, RLStageConfig], Field(discriminator="trainer")]
 
 
 class MoEConfig(BaseModel):
@@ -122,7 +131,7 @@ class DataConfig(BaseModel):
     seed: int = Field(description="Random seed for data sampling")
     batch_size: int = 8
     max_sample_attempts: int = Field(
-        description="Max get_task calls when collecting unique prompts",
+        description="Max generate_sample calls when collecting unique prompts",
     )
     oversample: bool = Field(
         default=False,
@@ -137,7 +146,10 @@ class DataConfig(BaseModel):
 
 
 class Config(BaseModel):
-    rl_config: RLConfig
+    stages: list[Stage] = Field(
+        description="Ordered training stages; each stage selects a trainer (e.g. sft, then grpo)",
+        min_length=1,
+    )
     llm_config: LLMConfig
     data_config: DataConfig
     visualize: VisualizeConfig = Field(default_factory=VisualizeConfig)

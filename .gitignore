@@ -5,3 +5,5 @@
 *pdf
 *out
 *log
+.venv/
+uv.lock

@@ -1,6 +1,6 @@
 import torch
 
-from llm.moe import MixtureOfExpert
+from rlhf2.llm.moe import MixtureOfExpert
 
 
 def test_moe_forward_preserves_shape_and_returns_loss():
