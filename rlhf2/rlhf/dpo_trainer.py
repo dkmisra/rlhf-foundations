@@ -3,6 +3,10 @@ import torch.nn.functional as F
 
 
 class DPOTrainer:
+    """Direct Preference Optimization (DPO).
+
+    Reference: https://arxiv.org/abs/2305.18290
+    """
 
     def __init__(self, beta, alpha=0.0, p=1.0):
         """
