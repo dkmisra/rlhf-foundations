@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 import webbrowser
@@ -257,6 +258,10 @@ class TrainingVisualizer:
         return series, generations
 
     def _run_dash(self) -> None:
+        # Werkzeug logs every HTTP request (e.g. the per-interval POST
+        # /_dash-update-component); silence everything below errors.
+        logging.getLogger("werkzeug").setLevel(logging.ERROR)
+
         metric_charts = list(METRIC_CHARTS)
         chart_ids = [chart_id for chart_id, _, _ in metric_charts]
 
