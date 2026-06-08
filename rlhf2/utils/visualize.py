@@ -343,13 +343,15 @@ class TrainingVisualizer:
                     ],
                 ),
                 html.H3("Recent generations", style={"marginTop": "8px"}),
-                html.Div(id="generations-table"),
+                self._build_generations_table(),
             ],
         )
 
         # Single multi-output callback (Dash batches all chart outputs in one request).
+        # The table only updates its `data` (not the whole component) so pagination
+        # and other UI state survive each refresh.
         chart_outputs = [Output(chart_id, "figure") for chart_id in chart_ids]
-        table_output = Output("generations-table", "children")
+        table_output = Output("generations-table", "data")
 
         @app.callback(
             chart_outputs + [table_output],
@@ -362,7 +364,7 @@ class TrainingVisualizer:
                 self._build_line_chart(series, series_specs, title, smoothing or 0.0)
                 for _, series_specs, title in metric_charts
             ]
-            return figures + [self._build_generations_table(generations)]
+            return figures + [self._generation_rows(generations)]
 
         app.run(
             host=self.config.host,
@@ -456,6 +458,8 @@ class TrainingVisualizer:
             margin=dict(l=48, r=16, t=40, b=40),
             showlegend=len(series_specs) > 1,
             hovermode="x unified",
+            # Preserve zoom/pan (and avoid the visible flash) across refreshes.
+            uirevision=title,
         )
         fig.update_xaxes(title_text="step", gridcolor=GRID_COLOR, linecolor=BORDER_COLOR)
         fig.update_yaxes(gridcolor=GRID_COLOR, linecolor=BORDER_COLOR)
@@ -467,11 +471,9 @@ class TrainingVisualizer:
         r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
         return f"{r}, {g}, {b}"
 
-    def _build_generations_table(self, generations: list[GenerationSample]) -> Any:
-        if not generations:
-            return html.P("No generations logged yet.", style={"color": MUTED_COLOR})
-
-        rows = [
+    @staticmethod
+    def _generation_rows(generations: list[GenerationSample]) -> list[dict]:
+        return [
             {
                 "step": g.step,
                 "phase": g.phase,
@@ -483,8 +485,12 @@ class TrainingVisualizer:
             for g in reversed(generations)
         ]
 
+    def _build_generations_table(self) -> Any:
+        """Static DataTable created once in the layout; rows are updated in-place
+        via the refresh callback so paging/sort state is preserved."""
         return dash_table.DataTable(
-            data=rows,
+            id="generations-table",
+            data=[],
             columns=[
                 {"name": "Step", "id": "step"},
                 {"name": "Phase", "id": "phase"},
