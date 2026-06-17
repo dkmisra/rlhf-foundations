@@ -4,6 +4,7 @@ import torch
 import torch.optim as opt
 
 from rlhf.evaluate import evaluate
+from rlhf.kl_utils import compute_kl
 from rlhf.sft import SFTTrainer
 from utils.data_types import RLConfig
 from utils.visualize import grad_norm
@@ -57,10 +58,10 @@ class AbstractRLHF:
                 
         return input_ids, attention_mask, response_mask, advantages
     
-    def calc_log_prob(self, model, input_ids, attention_mask, calc_entropy=False, noise=False):
+    def calc_log_prob(self, model, input_ids, attention_mask, calc_entropy=False):
 
-        logits, _ = model(input_ids, attention_mask, noise=noise)  # (batch * K) x max_seq x vocab
-        log_prob = torch.log_softmax(logits, dim=2)                # (batch * K) x max_seq x vocab
+        logits, _ = model(input_ids, attention_mask)   # (batch * K) x max_seq x vocab
+        log_prob = torch.log_softmax(logits, dim=2)    # (batch * K) x max_seq x vocab
 
         entropy = None
         if calc_entropy:
@@ -102,7 +103,12 @@ class AbstractRLHF:
 
         for i in range(max_tokens):
 
-            logits, kv_cache = model(input_ids, attention_mask, kv_cache)
+            logits, kv_cache = model(
+                input_ids,
+                attention_mask,
+                kv_cache,
+                noise=self.config.inference.noise,
+            )
 
             # We assume right-padding here, so need to do some work to extract last_logits
             if i == 0:
@@ -248,15 +254,7 @@ class AbstractRLHF:
                     rlhf_loss = self.calc_loss(log_prob, old_log_prob, infer_old_log_prob, response_mask[:, 1:], advantages)
                     avg_entropy = ((entropy * response_mask).sum(1) / (response_mask.sum(1) + 1e-6)).mean()
                     
-                    kl_loss = 0.0
-                    if self.config.kl > 0.0:
-                        # Compute K3 loss
-                        # K3: D(p||q) ~ logp/q + q/p - 1
-                        diff = log_prob - ref_log_prob
-                        kl_loss = diff + torch.exp(-diff) - 1
-                        kl_loss = (kl_loss * response_mask[:, 1:]).sum(1).mean(0)
-                    else:
-                        kl_loss = 0.0
+                    kl_loss = 0.0 if self.config.kl == 0.0 else compute_kl(log_prob, ref_log_prob, response_mask[:, 1:], self.config.kl_estimator)
                     
                     loss = rlhf_loss + self.config.kl * kl_loss + getattr(model, "moe_aux_loss", 0.0)
 

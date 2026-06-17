@@ -45,6 +45,7 @@ rl_config:
   inference:
     max_tokens: 16
     temp: 1.0
+    noise: true  # noisy rollouts; set false for on-policy sampling
   sft:
     enabled: true
     max_epochs: 3

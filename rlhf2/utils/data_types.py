@@ -8,6 +8,13 @@ class InferenceConfig(BaseModel):
 
     max_tokens: int = Field(default=40, description="Maximum tokens to generate per completion")
     temp: float = Field(default=1.0, description="Softmax temperature for sampling")
+    noise: bool = Field(
+        default=False,
+        description=(
+            "If true, add activation noise during rollout generation (see llm_config.noise_scale) "
+            "to simulate a noisier inference engine and introduce train/inference log-prob mismatch"
+        ),
+    )
 
 
 class SFTConfig(BaseModel):
@@ -53,6 +60,10 @@ class RLConfig(BaseModel):
     eps_high: float = 0.28
     eps_low: float = 0.2
     kl: float = 0.0
+    kl_estimator: Literal["k1", "k2", "k3"] = Field(
+        default="k3",
+        description="KL divergence estimator: k1 (unbiased), k2 (biased, positive), k3 (unbiased, positive)",
+    )
     num_updates: int = 1
     eval_every: int = Field(default=20, description="Run eval every N RL steps; 0 disables")
 
